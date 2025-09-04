@@ -1,0 +1,75 @@
+{
+  "name": "radix-ui-multiselect-primitive",
+  "type": "module",
+  "version": "0.0.0",
+  "packageManager": "pnpm@10.14.0",
+  "description": "Multiselect primitive for Radix UI",
+  "author": {
+    "name": "Erik Codev",
+    "url": "https://github.com/notcodev"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/notcodev/radix-ui-multiselect-primitive",
+  "repository": {
+    "url": "https://github.com/notcodev/radix-ui-multiselect-primitive.git",
+    "type": "git"
+  },
+  "bugs": "https://github.com/notcodev/radix-ui-multiselect-primitive/issues",
+  "keywords": [
+    "radix-ui",
+    "multiselect",
+    "primitive"
+  ],
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist/**/*"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc -b",
+    "clean": "rimraf dist",
+    "format:write": "prettier --write \"**/*.{ts,tsx,mdx}\" --cache",
+    "format:check": "prettier --check \"**/*.{ts,tsx,mdx}\" --cache",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "lint:inspect": "eslint-config-inspector",
+    "prepare": "husky",
+    "pub:beta": "pnpm build && pnpm publish --no-git-checks --access public --tag beta",
+    "pub:next": "pnpm build && pnpm publish --no-git-checks --access public --tag next",
+    "pub:release": "pnpm build && pnpm publish --access public"
+  },
+  "peerDependencies": {
+    "@types/react": "^18 || ^19",
+    "react": "^18 || ^19"
+  },
+  "peerDependenciesMeta": {
+    "@types/react": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "react": "^19"
+  },
+  "devDependencies": {
+    "@eslint/config-inspector": "^1.2.0",
+    "@notcodev/eslint": "^1.4.2",
+    "@notcodev/prettier": "^1.2.0",
+    "eslint": "~9.22.0",
+    "globals": "^16.3.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.1.6",
+    "prettier": "^3.6.2",
+    "rimraf": "^6.0.1",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.2"
+  },
+  "lint-staged": {
+    "*.{js,ts,jsx,tsx,cjs,mjs,cts,mts,md,yml,json}": [
+      "prettier --write",
+      "eslint --fix"
+    ]
+  }
+}
