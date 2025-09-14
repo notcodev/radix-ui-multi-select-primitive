@@ -28,6 +28,7 @@ import { useControllableState } from '@radix-ui/react-use-controllable-state'
 import { useLayoutEffect } from '@radix-ui/react-use-layout-effect'
 import { hideOthers } from 'aria-hidden'
 import React, {
+  forwardRef,
   useCallback,
   useEffect,
   useId,
@@ -63,6 +64,8 @@ const SCROLL_UP_BUTTON_NAME = 'SelectScrollUpButton'
 const SCROLL_DOWN_BUTTON_NAME = 'SelectScrollDownButton'
 const ARROW_NAME = 'MultiSelectArrow'
 const SEPARATOR_NAME = 'SelectSeparator'
+const ITEM_VALUE_PORTAL_NAME = 'MultiSelectItemValuePortal'
+const DESELECT_BUTTON_NAME = 'MultiSelectDeselectButton'
 
 /* ------------------------------------------------------------------------------------------------- */
 
@@ -287,110 +290,120 @@ type MultiSelectTriggerElement = React.ComponentRef<
   typeof Primitive.div
 >
 interface MultiSelectTriggerProps
-  extends React.ComponentProps<typeof Primitive.div> {
+  extends React.ComponentPropsWithoutRef<typeof Primitive.div> {
   disabled?: boolean
 }
 
-const MultiSelectTrigger = ({
-  ref,
-  __scopeMultiSelect,
-  disabled = false,
-  onClick,
-  onKeyDown,
-  onPointerDown,
-  ...props
-}: ScopedProps<MultiSelectTriggerProps>): React.JSX.Element => {
-  const popperScope = usePopperScope(__scopeMultiSelect)
-  const context = useMultiSelectContext(
-    TRIGGER_NAME,
-    __scopeMultiSelect,
-  )
-  const isDisabled = context.disabled || disabled
-  const composedRefs = useComposedRefs(ref, context.onTriggerChange)
-  const pointerTypeRef =
-    useRef<React.PointerEvent['pointerType']>('touch')
+const MultiSelectTrigger = forwardRef<
+  MultiSelectTriggerElement,
+  ScopedProps<MultiSelectTriggerProps>
+>(
+  (
+    {
+      __scopeMultiSelect,
+      disabled = false,
+      onClick,
+      onKeyDown,
+      onPointerDown,
+      ...props
+    },
+    forwardedRef,
+  ) => {
+    const popperScope = usePopperScope(__scopeMultiSelect)
+    const context = useMultiSelectContext(
+      TRIGGER_NAME,
+      __scopeMultiSelect,
+    )
+    const isDisabled = context.disabled || disabled
+    const composedRefs = useComposedRefs(
+      forwardedRef,
+      context.onTriggerChange,
+    )
+    const pointerTypeRef =
+      useRef<React.PointerEvent['pointerType']>('touch')
 
-  const handleOpen = (
-    pointerEvent?: React.MouseEvent | React.PointerEvent,
-  ): void => {
-    if (!isDisabled) {
-      context.onOpenChange(true)
-    }
+    const handleOpen = (
+      pointerEvent?: React.MouseEvent | React.PointerEvent,
+    ): void => {
+      if (!isDisabled) {
+        context.onOpenChange(true)
+      }
 
-    if (pointerEvent) {
-      context.triggerPointerDownPosRef.current = {
-        x: Math.round(pointerEvent.pageX),
-        y: Math.round(pointerEvent.pageY),
+      if (pointerEvent) {
+        context.triggerPointerDownPosRef.current = {
+          x: Math.round(pointerEvent.pageX),
+          y: Math.round(pointerEvent.pageY),
+        }
       }
     }
-  }
 
-  return (
-    <PopperPrimitive.Anchor asChild {...popperScope}>
-      <Primitive.div
-        ref={composedRefs}
-        aria-expanded={context.open}
-        aria-required={context.required}
-        data-disabled={isDisabled ? '' : undefined}
-        data-state={context.open ? 'open' : 'closed'}
-        dir={context.dir}
-        tabIndex={isDisabled ? -1 : 0}
-        aria-autocomplete='none'
-        aria-controls={context.contentId}
-        data-placeholder={
-          shouldShowPlaceholder(context.value) ? '' : undefined
-        }
-        onClick={composeEventHandlers(onClick, (event) => {
-          // Whilst browsers generally have no issue focusing the trigger when clicking
-          // on a label, Safari seems to struggle with the fact that there's no `onClick`.
-          // We force `focus` in this case. Note: this doesn't create any other side-effect
-          // because we are preventing default in `onPointerDown` so effectively
-          // this only runs for a label "click"
-          event.currentTarget.focus()
-
-          // Open on click when using a touch or pen device
-          if (pointerTypeRef.current !== 'mouse') {
-            handleOpen(event)
+    return (
+      <PopperPrimitive.Anchor asChild {...popperScope}>
+        <Primitive.div
+          ref={composedRefs}
+          aria-expanded={context.open}
+          aria-required={context.required}
+          data-disabled={isDisabled ? '' : undefined}
+          data-state={context.open ? 'open' : 'closed'}
+          dir={context.dir}
+          tabIndex={isDisabled ? -1 : 0}
+          aria-autocomplete='none'
+          aria-controls={context.contentId}
+          data-placeholder={
+            shouldShowPlaceholder(context.value) ? '' : undefined
           }
-        })}
-        onKeyDown={composeEventHandlers(onKeyDown, (event) => {
-          if (OPEN_KEYS.includes(event.key)) {
-            handleOpen()
-            event.preventDefault()
-          }
-        })}
-        onPointerDown={composeEventHandlers(
-          onPointerDown,
-          (event) => {
-            pointerTypeRef.current = event.pointerType
+          onClick={composeEventHandlers(onClick, (event) => {
+            // Whilst browsers generally have no issue focusing the trigger when clicking
+            // on a label, Safari seems to struggle with the fact that there's no `onClick`.
+            // We force `focus` in this case. Note: this doesn't create any other side-effect
+            // because we are preventing default in `onPointerDown` so effectively
+            // this only runs for a label "click"
+            event.currentTarget.focus()
 
-            // prevent implicit pointer capture
-            // https://www.w3.org/TR/pointerevents3/#implicit-pointer-capture
-            const target = event.target as HTMLElement
-            if (target.hasPointerCapture(event.pointerId)) {
-              target.releasePointerCapture(event.pointerId)
-            }
-
-            // only call handler if it's the left button (mousedown gets triggered by all mouse buttons)
-            // but not when the control key is pressed (avoiding MacOS right click); also not for touch
-            // devices because that would open the menu on scroll. (pen devices behave as touch on iOS).
-            if (
-              event.button === 0 &&
-              event.ctrlKey === false &&
-              event.pointerType === 'mouse'
-            ) {
+            // Open on click when using a touch or pen device
+            if (pointerTypeRef.current !== 'mouse') {
               handleOpen(event)
-              // prevent trigger from stealing focus from the active item after opening.
+            }
+          })}
+          onKeyDown={composeEventHandlers(onKeyDown, (event) => {
+            if (OPEN_KEYS.includes(event.key)) {
+              handleOpen()
               event.preventDefault()
             }
-          },
-        )}
-        role='combobox'
-        {...props}
-      />
-    </PopperPrimitive.Anchor>
-  )
-}
+          })}
+          onPointerDown={composeEventHandlers(
+            onPointerDown,
+            (event) => {
+              pointerTypeRef.current = event.pointerType
+
+              // prevent implicit pointer capture
+              // https://www.w3.org/TR/pointerevents3/#implicit-pointer-capture
+              const target = event.target as HTMLElement
+              if (target.hasPointerCapture(event.pointerId)) {
+                target.releasePointerCapture(event.pointerId)
+              }
+
+              // only call handler if it's the left button (mousedown gets triggered by all mouse buttons)
+              // but not when the control key is pressed (avoiding MacOS right click); also not for touch
+              // devices because that would open the menu on scroll. (pen devices behave as touch on iOS).
+              if (
+                event.button === 0 &&
+                event.ctrlKey === false &&
+                event.pointerType === 'mouse'
+              ) {
+                handleOpen(event)
+                // prevent trigger from stealing focus from the active item after opening.
+                event.preventDefault()
+              }
+            },
+          )}
+          role='combobox'
+          {...props}
+        />
+      </PopperPrimitive.Anchor>
+    )
+  },
+)
 
 MultiSelectTrigger.displayName = TRIGGER_NAME
 
@@ -404,16 +417,16 @@ type MultiSelectValueElement = React.ComponentRef<
 
 interface MultiSelectValueProps
   extends Omit<
-    React.ComponentProps<typeof Primitive.span>,
+    React.ComponentPropsWithoutRef<typeof Primitive.span>,
     'placeholder'
   > {
   placeholder?: React.ReactNode
 }
 
-const MultiSelectValue = ({
-  ref: forwardedRef,
-  ...props
-}: ScopedProps<MultiSelectValueProps>): React.JSX.Element => {
+const MultiSelectValue = forwardRef<
+  MultiSelectValueElement,
+  ScopedProps<MultiSelectValueProps>
+>((props, forwardedRef) => {
   // We ignore `className` and `style` as this part shouldn't be styled.
   const {
     __scopeMultiSelect,
@@ -453,7 +466,7 @@ const MultiSelectValue = ({
       )}
     </Primitive.span>
   )
-}
+})
 
 MultiSelectValue.displayName = VALUE_NAME
 
@@ -461,17 +474,29 @@ MultiSelectValue.displayName = VALUE_NAME
  * SelectIcon
  * -----------------------------------------------------------------------------------------------*/
 
-interface MultiSelectIconProps
-  extends React.ComponentProps<typeof Primitive.span> {}
+type MultiSelectIconElement = React.ComponentRef<
+  typeof Primitive.span
+>
 
-const MultiSelectIcon = ({
-  __scopeMultiSelect,
-  children,
-  ...props
-}: ScopedProps<MultiSelectIconProps>): React.JSX.Element => (
-  <Primitive.span aria-hidden {...props}>
-    {children || '▼'}
-  </Primitive.span>
+interface MultiSelectIconProps
+  extends React.ComponentPropsWithoutRef<typeof Primitive.span> {}
+
+const MultiSelectIcon = forwardRef<
+  MultiSelectIconElement,
+  ScopedProps<MultiSelectIconProps>
+>(
+  (
+    {
+      __scopeMultiSelect,
+      children,
+      ...props
+    }: ScopedProps<MultiSelectIconProps>,
+    forwardedRef,
+  ) => (
+    <Primitive.span ref={forwardedRef} aria-hidden {...props}>
+      {children || '▼'}
+    </Primitive.span>
+  ),
 )
 
 MultiSelectIcon.displayName = ICON_NAME
@@ -480,15 +505,24 @@ MultiSelectIcon.displayName = ICON_NAME
  * SelectPortal
  * -----------------------------------------------------------------------------------------------*/
 
-type PortalProps = React.ComponentProps<typeof PortalPrimitive>
+type PortalProps = React.ComponentPropsWithoutRef<
+  typeof PortalPrimitive
+>
+
+type MultiSelectPortalElement = React.ComponentRef<
+  typeof PortalPrimitive
+>
 interface MultiSelectPortalProps {
   children?: React.ReactNode
   container?: PortalProps['container']
 }
 
-const MultiSelectPortal = (
-  props: ScopedProps<MultiSelectPortalProps>,
-): React.JSX.Element => <PortalPrimitive asChild {...props} />
+const MultiSelectPortal = forwardRef<
+  MultiSelectPortalElement,
+  ScopedProps<MultiSelectPortalProps>
+>((props, forwardedRef) => (
+  <PortalPrimitive asChild {...props} ref={forwardedRef} />
+))
 
 MultiSelectPortal.displayName = PORTAL_NAME
 
@@ -504,44 +538,51 @@ type PopperContentProps = React.ComponentPropsWithoutRef<
 >
 interface MultiSelectPopperPositionProps
   extends PopperContentProps,
-    MultiSelectPopperPrivateProps {
-  ref?: React.Ref<MultiSelectPopperPositionElement | null>
-}
+    MultiSelectPopperPrivateProps {}
 
-const MultiSelectPopperPosition = ({
-  __scopeMultiSelect,
-  align = 'start',
-  collisionPadding = CONTENT_MARGIN,
-  style,
-  ...props
-}: ScopedProps<MultiSelectPopperPositionProps>): React.JSX.Element => {
-  const popperScope = usePopperScope(__scopeMultiSelect)
+const MultiSelectPopperPosition = forwardRef<
+  MultiSelectPopperPositionElement,
+  ScopedProps<MultiSelectPopperPositionProps>
+>(
+  (
+    {
+      __scopeMultiSelect,
+      align = 'start',
+      collisionPadding = CONTENT_MARGIN,
+      style,
+      ...props
+    },
+    forwardedRef,
+  ) => {
+    const popperScope = usePopperScope(__scopeMultiSelect)
 
-  return (
-    <PopperPrimitive.Content
-      {...popperScope}
-      {...props}
-      style={{
-        boxSizing: 'border-box',
-        ...style,
-        ...{
-          '--radix-multi-select-content-transform-origin':
-            'var(--radix-popper-transform-origin)',
-          '--radix-multi-select-content-available-width':
-            'var(--radix-popper-available-width)',
-          '--radix-multi-select-content-available-height':
-            'var(--radix-popper-available-height)',
-          '--radix-multi-select-trigger-width':
-            'var(--radix-popper-anchor-width)',
-          '--radix-multi-select-trigger-height':
-            'var(--radix-popper-anchor-height)',
-        },
-      }}
-      align={align}
-      collisionPadding={collisionPadding}
-    />
-  )
-}
+    return (
+      <PopperPrimitive.Content
+        {...popperScope}
+        {...props}
+        ref={forwardedRef}
+        style={{
+          boxSizing: 'border-box',
+          ...style,
+          ...{
+            '--radix-multi-select-content-transform-origin':
+              'var(--radix-popper-transform-origin)',
+            '--radix-multi-select-content-available-width':
+              'var(--radix-popper-available-width)',
+            '--radix-multi-select-content-available-height':
+              'var(--radix-popper-available-height)',
+            '--radix-multi-select-trigger-width':
+              'var(--radix-popper-anchor-width)',
+            '--radix-multi-select-trigger-height':
+              'var(--radix-popper-anchor-height)',
+          },
+        }}
+        align={align}
+        collisionPadding={collisionPadding}
+      />
+    )
+  },
+)
 
 MultiSelectPopperPosition.displayName = POPPER_POSITION_NAME
 
@@ -553,103 +594,107 @@ type MultiSelectViewportElement = React.ComponentRef<
   typeof Primitive.div
 >
 interface MultiSelectViewportProps
-  extends React.ComponentProps<typeof Primitive.div> {
+  extends React.ComponentPropsWithoutRef<typeof Primitive.div> {
   nonce?: string
 }
 
-const MultiSelectViewport = ({
-  __scopeMultiSelect,
-  nonce,
-  ref,
-  style,
-  onScroll,
-  ...props
-}: ScopedProps<MultiSelectViewportProps>): React.JSX.Element => {
-  const contentContext = useMultiSelectContentContext(
-    VIEWPORT_NAME,
-    __scopeMultiSelect,
-  )
-  const viewportContext = useMultiSelectViewportContext(
-    VIEWPORT_NAME,
-    __scopeMultiSelect,
-  )
-  const composedRefs = useComposedRefs(
-    ref,
-    contentContext.onViewportChange,
-  )
-  const prevScrollTopRef = useRef(0)
-  return (
-    <>
-      {/* Hide scrollbars cross-browser and enable momentum scroll for touch devices */}
-      <style
-        dangerouslySetInnerHTML={{
-          __html: `[data-radix-multi-select-viewport]{scrollbar-width:none;-ms-overflow-style:none;-webkit-overflow-scrolling:touch;}[data-radix-multi-select-viewport]::-webkit-scrollbar{display:none}`,
-        }}
-        nonce={nonce}
-      />
-      <CollectionSlot scope={__scopeMultiSelect}>
-        <Primitive.div
-          ref={composedRefs}
-          style={{
-            // we use position: 'relative' here on the `viewport` so that when we call
-            // `selectedItem.offsetTop` in calculations, the offset is relative to the viewport
-            // (independent of the scrollUpButton).
-            position: 'relative',
-            flex: 1,
-            // Viewport should only be scrollable in the vertical direction.
-            // This won't work in vertical writing modes, so we'll need to
-            // revisit this if/when that is supported
-            // https://developer.chrome.com/blog/vertical-form-controls
-            overflow: 'hidden auto',
-            ...style,
+const MultiSelectViewport = forwardRef<
+  MultiSelectViewportElement,
+  ScopedProps<MultiSelectViewportProps>
+>(
+  (
+    { __scopeMultiSelect, nonce, style, onScroll, ...props },
+    forwardedRef,
+  ) => {
+    const contentContext = useMultiSelectContentContext(
+      VIEWPORT_NAME,
+      __scopeMultiSelect,
+    )
+    const viewportContext = useMultiSelectViewportContext(
+      VIEWPORT_NAME,
+      __scopeMultiSelect,
+    )
+    const composedRefs = useComposedRefs(
+      forwardedRef,
+      contentContext.onViewportChange,
+    )
+    const prevScrollTopRef = useRef(0)
+    return (
+      <>
+        {/* Hide scrollbars cross-browser and enable momentum scroll for touch devices */}
+        <style
+          dangerouslySetInnerHTML={{
+            __html: `[data-radix-multi-select-viewport]{scrollbar-width:none;-ms-overflow-style:none;-webkit-overflow-scrolling:touch;}[data-radix-multi-select-viewport]::-webkit-scrollbar{display:none}`,
           }}
-          data-radix-multi-select-viewport=''
-          onScroll={composeEventHandlers(onScroll, (event) => {
-            const viewport = event.currentTarget
-            const { contentWrapper, shouldExpandOnScrollRef } =
-              viewportContext
-            if (shouldExpandOnScrollRef?.current && contentWrapper) {
-              const scrolledBy = Math.abs(
-                prevScrollTopRef.current - viewport.scrollTop,
-              )
-              if (scrolledBy > 0) {
-                const availableHeight =
-                  window.innerHeight - CONTENT_MARGIN * 2
-                const cssMinHeight = Number.parseFloat(
-                  contentWrapper.style.minHeight,
+          nonce={nonce}
+        />
+        <CollectionSlot scope={__scopeMultiSelect}>
+          <Primitive.div
+            ref={composedRefs}
+            style={{
+              // we use position: 'relative' here on the `viewport` so that when we call
+              // `selectedItem.offsetTop` in calculations, the offset is relative to the viewport
+              // (independent of the scrollUpButton).
+              position: 'relative',
+              flex: 1,
+              // Viewport should only be scrollable in the vertical direction.
+              // This won't work in vertical writing modes, so we'll need to
+              // revisit this if/when that is supported
+              // https://developer.chrome.com/blog/vertical-form-controls
+              overflow: 'hidden auto',
+              ...style,
+            }}
+            data-radix-multi-select-viewport=''
+            onScroll={composeEventHandlers(onScroll, (event) => {
+              const viewport = event.currentTarget
+              const { contentWrapper, shouldExpandOnScrollRef } =
+                viewportContext
+              if (
+                shouldExpandOnScrollRef?.current &&
+                contentWrapper
+              ) {
+                const scrolledBy = Math.abs(
+                  prevScrollTopRef.current - viewport.scrollTop,
                 )
-                const cssHeight = Number.parseFloat(
-                  contentWrapper.style.height,
-                )
-                const prevHeight = Math.max(cssMinHeight, cssHeight)
-
-                if (prevHeight < availableHeight) {
-                  const nextHeight = prevHeight + scrolledBy
-                  const clampedNextHeight = Math.min(
-                    availableHeight,
-                    nextHeight,
+                if (scrolledBy > 0) {
+                  const availableHeight =
+                    window.innerHeight - CONTENT_MARGIN * 2
+                  const cssMinHeight = Number.parseFloat(
+                    contentWrapper.style.minHeight,
                   )
-                  const heightDiff = nextHeight - clampedNextHeight
+                  const cssHeight = Number.parseFloat(
+                    contentWrapper.style.height,
+                  )
+                  const prevHeight = Math.max(cssMinHeight, cssHeight)
 
-                  contentWrapper.style.height = `${clampedNextHeight}px`
-                  if (contentWrapper.style.bottom === '0px') {
-                    viewport.scrollTop =
-                      heightDiff > 0 ? heightDiff : 0
-                    // ensure the content stays pinned to the bottom
-                    contentWrapper.style.justifyContent = 'flex-end'
+                  if (prevHeight < availableHeight) {
+                    const nextHeight = prevHeight + scrolledBy
+                    const clampedNextHeight = Math.min(
+                      availableHeight,
+                      nextHeight,
+                    )
+                    const heightDiff = nextHeight - clampedNextHeight
+
+                    contentWrapper.style.height = `${clampedNextHeight}px`
+                    if (contentWrapper.style.bottom === '0px') {
+                      viewport.scrollTop =
+                        heightDiff > 0 ? heightDiff : 0
+                      // ensure the content stays pinned to the bottom
+                      contentWrapper.style.justifyContent = 'flex-end'
+                    }
                   }
                 }
               }
-            }
-            prevScrollTopRef.current = viewport.scrollTop
-          })}
-          role='presentation'
-          {...props}
-        />
-      </CollectionSlot>
-    </>
-  )
-}
+              prevScrollTopRef.current = viewport.scrollTop
+            })}
+            role='presentation'
+            {...props}
+          />
+        </CollectionSlot>
+      </>
+    )
+  },
+)
 
 MultiSelectViewport.displayName = VIEWPORT_NAME
 
@@ -661,279 +706,285 @@ type MultiSelectItemAlignedPositionElement = React.ComponentRef<
   typeof Primitive.div
 >
 interface MultiSelectItemAlignedPositionProps
-  extends React.ComponentProps<typeof Primitive.div>,
+  extends React.ComponentPropsWithoutRef<typeof Primitive.div>,
     MultiSelectPopperPrivateProps {}
 
-const MultiSelectItemAlignedPosition = ({
-  __scopeMultiSelect,
-  ref,
-  onPlaced,
-  ...popperProps
-}: ScopedProps<MultiSelectItemAlignedPositionProps>): React.JSX.Element => {
-  const context = useMultiSelectContext(
-    CONTENT_NAME,
-    __scopeMultiSelect,
-  )
-  const contentContext = useMultiSelectContentContext(
-    CONTENT_NAME,
-    __scopeMultiSelect,
-  )
-  const [contentWrapper, setContentWrapper] =
-    useState<HTMLDivElement | null>(null)
-  const [content, setContent] =
-    useState<MultiSelectItemAlignedPositionElement | null>(null)
-  const composedRefs = useComposedRefs(ref, setContent)
-  const getItems = useCollection(__scopeMultiSelect)
-  const shouldExpandOnScrollRef = useRef(false)
-  const shouldRepositionRef = useRef(true)
+const MultiSelectItemAlignedPosition = forwardRef<
+  MultiSelectItemAlignedPositionElement,
+  ScopedProps<MultiSelectItemAlignedPositionProps>
+>(
+  (
+    { __scopeMultiSelect, onPlaced, ...popperProps },
+    forwardedRef,
+  ) => {
+    const context = useMultiSelectContext(
+      CONTENT_NAME,
+      __scopeMultiSelect,
+    )
+    const contentContext = useMultiSelectContentContext(
+      CONTENT_NAME,
+      __scopeMultiSelect,
+    )
+    const [contentWrapper, setContentWrapper] =
+      useState<HTMLDivElement | null>(null)
+    const [content, setContent] =
+      useState<MultiSelectItemAlignedPositionElement | null>(null)
+    const composedRefs = useComposedRefs(forwardedRef, setContent)
+    const getItems = useCollection(__scopeMultiSelect)
+    const shouldExpandOnScrollRef = useRef(false)
+    const shouldRepositionRef = useRef(true)
 
-  const {
-    viewport,
-    selectedItem,
-    selectedItemText,
-    focusSelectedItem,
-  } = contentContext
-  const position = useCallback(() => {
-    if (
-      context.trigger &&
-      context.valueNode &&
-      contentWrapper &&
-      content &&
-      viewport &&
-      selectedItem &&
-      selectedItemText
-    ) {
-      const triggerRect = context.trigger.getBoundingClientRect()
+    const {
+      viewport,
+      selectedItem,
+      selectedItemText,
+      focusSelectedItem,
+    } = contentContext
+    const position = useCallback(() => {
+      if (
+        context.trigger &&
+        context.valueNode &&
+        contentWrapper &&
+        content &&
+        viewport &&
+        selectedItem &&
+        selectedItemText
+      ) {
+        const triggerRect = context.trigger.getBoundingClientRect()
 
-      // -----------------------------------------------------------------------------------------
-      //  Horizontal positioning
-      // -----------------------------------------------------------------------------------------
-      const contentRect = content.getBoundingClientRect()
-      const valueNodeRect = context.valueNode.getBoundingClientRect()
-      const itemTextRect = selectedItemText.getBoundingClientRect()
+        // -----------------------------------------------------------------------------------------
+        //  Horizontal positioning
+        // -----------------------------------------------------------------------------------------
+        const contentRect = content.getBoundingClientRect()
+        const valueNodeRect =
+          context.valueNode.getBoundingClientRect()
+        const itemTextRect = selectedItemText.getBoundingClientRect()
 
-      if (context.dir !== 'rtl') {
-        const itemTextOffset = itemTextRect.left - contentRect.left
-        const left = valueNodeRect.left - itemTextOffset
-        const leftDelta = triggerRect.left - left
-        const minContentWidth = triggerRect.width + leftDelta
-        const contentWidth = Math.max(
-          minContentWidth,
-          contentRect.width,
+        if (context.dir !== 'rtl') {
+          const itemTextOffset = itemTextRect.left - contentRect.left
+          const left = valueNodeRect.left - itemTextOffset
+          const leftDelta = triggerRect.left - left
+          const minContentWidth = triggerRect.width + leftDelta
+          const contentWidth = Math.max(
+            minContentWidth,
+            contentRect.width,
+          )
+          const rightEdge = window.innerWidth - CONTENT_MARGIN
+          const clampedLeft = clamp(left, [
+            CONTENT_MARGIN,
+            // Prevents the content from going off the starting edge of the
+            // viewport. It may still go off the ending edge, but this can be
+            // controlled by the user since they may want to manage overflow in a
+            // specific way.
+            // https://github.com/radix-ui/primitives/issues/2049
+            Math.max(CONTENT_MARGIN, rightEdge - contentWidth),
+          ])
+
+          contentWrapper.style.minWidth = `${minContentWidth}px`
+          contentWrapper.style.left = `${clampedLeft}px`
+        } else {
+          const itemTextOffset =
+            contentRect.right - itemTextRect.right
+          const right =
+            window.innerWidth - valueNodeRect.right - itemTextOffset
+          const rightDelta =
+            window.innerWidth - triggerRect.right - right
+          const minContentWidth = triggerRect.width + rightDelta
+          const contentWidth = Math.max(
+            minContentWidth,
+            contentRect.width,
+          )
+          const leftEdge = window.innerWidth - CONTENT_MARGIN
+          const clampedRight = clamp(right, [
+            CONTENT_MARGIN,
+            Math.max(CONTENT_MARGIN, leftEdge - contentWidth),
+          ])
+
+          contentWrapper.style.minWidth = `${minContentWidth}px`
+          contentWrapper.style.right = `${clampedRight}px`
+        }
+
+        // -----------------------------------------------------------------------------------------
+        // Vertical positioning
+        // -----------------------------------------------------------------------------------------
+        const items = getItems()
+        const availableHeight =
+          window.innerHeight - CONTENT_MARGIN * 2
+        const itemsHeight = viewport.scrollHeight
+
+        const contentStyles = window.getComputedStyle(content)
+        const contentBorderTopWidth = Number.parseInt(
+          contentStyles.borderTopWidth,
+          10,
         )
-        const rightEdge = window.innerWidth - CONTENT_MARGIN
-        const clampedLeft = clamp(left, [
-          CONTENT_MARGIN,
-          // Prevents the content from going off the starting edge of the
-          // viewport. It may still go off the ending edge, but this can be
-          // controlled by the user since they may want to manage overflow in a
-          // specific way.
-          // https://github.com/radix-ui/primitives/issues/2049
-          Math.max(CONTENT_MARGIN, rightEdge - contentWidth),
-        ])
-
-        contentWrapper.style.minWidth = `${minContentWidth}px`
-        contentWrapper.style.left = `${clampedLeft}px`
-      } else {
-        const itemTextOffset = contentRect.right - itemTextRect.right
-        const right =
-          window.innerWidth - valueNodeRect.right - itemTextOffset
-        const rightDelta =
-          window.innerWidth - triggerRect.right - right
-        const minContentWidth = triggerRect.width + rightDelta
-        const contentWidth = Math.max(
-          minContentWidth,
-          contentRect.width,
+        const contentPaddingTop = Number.parseInt(
+          contentStyles.paddingTop,
+          10,
         )
-        const leftEdge = window.innerWidth - CONTENT_MARGIN
-        const clampedRight = clamp(right, [
-          CONTENT_MARGIN,
-          Math.max(CONTENT_MARGIN, leftEdge - contentWidth),
-        ])
+        const contentBorderBottomWidth = Number.parseInt(
+          contentStyles.borderBottomWidth,
+          10,
+        )
+        const contentPaddingBottom = Number.parseInt(
+          contentStyles.paddingBottom,
+          10,
+        )
+        const fullContentHeight = contentBorderTopWidth + contentPaddingTop + itemsHeight + contentPaddingBottom + contentBorderBottomWidth; // prettier-ignore
+        const minContentHeight = Math.min(
+          selectedItem.offsetHeight * 5,
+          fullContentHeight,
+        )
 
-        contentWrapper.style.minWidth = `${minContentWidth}px`
-        contentWrapper.style.right = `${clampedRight}px`
+        const viewportStyles = window.getComputedStyle(viewport)
+        const viewportPaddingTop = Number.parseInt(
+          viewportStyles.paddingTop,
+          10,
+        )
+        const viewportPaddingBottom = Number.parseInt(
+          viewportStyles.paddingBottom,
+          10,
+        )
+
+        const topEdgeToTriggerMiddle =
+          triggerRect.top + triggerRect.height / 2 - CONTENT_MARGIN
+        const triggerMiddleToBottomEdge =
+          availableHeight - topEdgeToTriggerMiddle
+
+        const selectedItemHalfHeight = selectedItem.offsetHeight / 2
+        const itemOffsetMiddle =
+          selectedItem.offsetTop + selectedItemHalfHeight
+        const contentTopToItemMiddle =
+          contentBorderTopWidth + contentPaddingTop + itemOffsetMiddle
+        const itemMiddleToContentBottom =
+          fullContentHeight - contentTopToItemMiddle
+
+        const willAlignWithoutTopOverflow =
+          contentTopToItemMiddle <= topEdgeToTriggerMiddle
+
+        if (willAlignWithoutTopOverflow) {
+          const isLastItem =
+            items.length > 0 &&
+            selectedItem === items[items.length - 1]!.ref.current
+          contentWrapper.style.bottom = `${0}px`
+          const viewportOffsetBottom =
+            content.clientHeight -
+            viewport.offsetTop -
+            viewport.offsetHeight
+          const clampedTriggerMiddleToBottomEdge = Math.max(
+            triggerMiddleToBottomEdge,
+            selectedItemHalfHeight +
+              // viewport might have padding bottom, include it to avoid a scrollable viewport
+              (isLastItem ? viewportPaddingBottom : 0) +
+              viewportOffsetBottom +
+              contentBorderBottomWidth,
+          )
+          const height =
+            contentTopToItemMiddle + clampedTriggerMiddleToBottomEdge
+          contentWrapper.style.height = `${height}px`
+        } else {
+          const isFirstItem =
+            items.length > 0 && selectedItem === items[0]!.ref.current
+          contentWrapper.style.top = `${0}px`
+          const clampedTopEdgeToTriggerMiddle = Math.max(
+            topEdgeToTriggerMiddle,
+            contentBorderTopWidth +
+              viewport.offsetTop +
+              // viewport might have padding top, include it to avoid a scrollable viewport
+              (isFirstItem ? viewportPaddingTop : 0) +
+              selectedItemHalfHeight,
+          )
+          const height =
+            clampedTopEdgeToTriggerMiddle + itemMiddleToContentBottom
+          contentWrapper.style.height = `${height}px`
+          viewport.scrollTop =
+            contentTopToItemMiddle -
+            topEdgeToTriggerMiddle +
+            viewport.offsetTop
+        }
+
+        contentWrapper.style.margin = `${CONTENT_MARGIN}px 0`
+        contentWrapper.style.minHeight = `${minContentHeight}px`
+        contentWrapper.style.maxHeight = `${availableHeight}px`
+        // -----------------------------------------------------------------------------------------
+
+        onPlaced?.()
+
+        // we don't want the initial scroll position adjustment to trigger "expand on scroll"
+        // so we explicitly turn it on only after they've registered.
+        requestAnimationFrame(
+          () => (shouldExpandOnScrollRef.current = true),
+        )
       }
+    }, [
+      getItems,
+      context.trigger,
+      context.valueNode,
+      contentWrapper,
+      content,
+      viewport,
+      selectedItem,
+      selectedItemText,
+      context.dir,
+      onPlaced,
+    ])
 
-      // -----------------------------------------------------------------------------------------
-      // Vertical positioning
-      // -----------------------------------------------------------------------------------------
-      const items = getItems()
-      const availableHeight = window.innerHeight - CONTENT_MARGIN * 2
-      const itemsHeight = viewport.scrollHeight
+    useLayoutEffect(() => position(), [position])
 
-      const contentStyles = window.getComputedStyle(content)
-      const contentBorderTopWidth = Number.parseInt(
-        contentStyles.borderTopWidth,
-        10,
-      )
-      const contentPaddingTop = Number.parseInt(
-        contentStyles.paddingTop,
-        10,
-      )
-      const contentBorderBottomWidth = Number.parseInt(
-        contentStyles.borderBottomWidth,
-        10,
-      )
-      const contentPaddingBottom = Number.parseInt(
-        contentStyles.paddingBottom,
-        10,
-      )
-      const fullContentHeight = contentBorderTopWidth + contentPaddingTop + itemsHeight + contentPaddingBottom + contentBorderBottomWidth; // prettier-ignore
-      const minContentHeight = Math.min(
-        selectedItem.offsetHeight * 5,
-        fullContentHeight,
-      )
+    // copy z-index from content to wrapper
+    const [contentZIndex, setContentZIndex] = useState<string>()
+    useLayoutEffect(() => {
+      if (content)
+        setContentZIndex(window.getComputedStyle(content).zIndex)
+    }, [content])
 
-      const viewportStyles = window.getComputedStyle(viewport)
-      const viewportPaddingTop = Number.parseInt(
-        viewportStyles.paddingTop,
-        10,
-      )
-      const viewportPaddingBottom = Number.parseInt(
-        viewportStyles.paddingBottom,
-        10,
-      )
+    // When the viewport becomes scrollable at the top, the scroll up button will mount.
+    // Because it is part of the normal flow, it will push down the viewport, thus throwing our
+    // trigger => selectedItem alignment off by the amount the viewport was pushed down.
+    // We wait for this to happen and then re-run the positining logic one more time to account for it.
+    const handleScrollButtonChange = useCallback(
+      (node: MultiSelectScrollButtonImplElement | null) => {
+        if (node && shouldRepositionRef.current === true) {
+          position()
+          focusSelectedItem?.()
+          shouldRepositionRef.current = false
+        }
+      },
+      [position, focusSelectedItem],
+    )
 
-      const topEdgeToTriggerMiddle =
-        triggerRect.top + triggerRect.height / 2 - CONTENT_MARGIN
-      const triggerMiddleToBottomEdge =
-        availableHeight - topEdgeToTriggerMiddle
-
-      const selectedItemHalfHeight = selectedItem.offsetHeight / 2
-      const itemOffsetMiddle =
-        selectedItem.offsetTop + selectedItemHalfHeight
-      const contentTopToItemMiddle =
-        contentBorderTopWidth + contentPaddingTop + itemOffsetMiddle
-      const itemMiddleToContentBottom =
-        fullContentHeight - contentTopToItemMiddle
-
-      const willAlignWithoutTopOverflow =
-        contentTopToItemMiddle <= topEdgeToTriggerMiddle
-
-      if (willAlignWithoutTopOverflow) {
-        const isLastItem =
-          items.length > 0 &&
-          selectedItem === items[items.length - 1]!.ref.current
-        contentWrapper.style.bottom = `${0}px`
-        const viewportOffsetBottom =
-          content.clientHeight -
-          viewport.offsetTop -
-          viewport.offsetHeight
-        const clampedTriggerMiddleToBottomEdge = Math.max(
-          triggerMiddleToBottomEdge,
-          selectedItemHalfHeight +
-            // viewport might have padding bottom, include it to avoid a scrollable viewport
-            (isLastItem ? viewportPaddingBottom : 0) +
-            viewportOffsetBottom +
-            contentBorderBottomWidth,
-        )
-        const height =
-          contentTopToItemMiddle + clampedTriggerMiddleToBottomEdge
-        contentWrapper.style.height = `${height}px`
-      } else {
-        const isFirstItem =
-          items.length > 0 && selectedItem === items[0]!.ref.current
-        contentWrapper.style.top = `${0}px`
-        const clampedTopEdgeToTriggerMiddle = Math.max(
-          topEdgeToTriggerMiddle,
-          contentBorderTopWidth +
-            viewport.offsetTop +
-            // viewport might have padding top, include it to avoid a scrollable viewport
-            (isFirstItem ? viewportPaddingTop : 0) +
-            selectedItemHalfHeight,
-        )
-        const height =
-          clampedTopEdgeToTriggerMiddle + itemMiddleToContentBottom
-        contentWrapper.style.height = `${height}px`
-        viewport.scrollTop =
-          contentTopToItemMiddle -
-          topEdgeToTriggerMiddle +
-          viewport.offsetTop
-      }
-
-      contentWrapper.style.margin = `${CONTENT_MARGIN}px 0`
-      contentWrapper.style.minHeight = `${minContentHeight}px`
-      contentWrapper.style.maxHeight = `${availableHeight}px`
-      // -----------------------------------------------------------------------------------------
-
-      onPlaced?.()
-
-      // we don't want the initial scroll position adjustment to trigger "expand on scroll"
-      // so we explicitly turn it on only after they've registered.
-      requestAnimationFrame(
-        () => (shouldExpandOnScrollRef.current = true),
-      )
-    }
-  }, [
-    getItems,
-    context.trigger,
-    context.valueNode,
-    contentWrapper,
-    content,
-    viewport,
-    selectedItem,
-    selectedItemText,
-    context.dir,
-    onPlaced,
-  ])
-
-  useLayoutEffect(() => position(), [position])
-
-  // copy z-index from content to wrapper
-  const [contentZIndex, setContentZIndex] = useState<string>()
-  useLayoutEffect(() => {
-    if (content)
-      setContentZIndex(window.getComputedStyle(content).zIndex)
-  }, [content])
-
-  // When the viewport becomes scrollable at the top, the scroll up button will mount.
-  // Because it is part of the normal flow, it will push down the viewport, thus throwing our
-  // trigger => selectedItem alignment off by the amount the viewport was pushed down.
-  // We wait for this to happen and then re-run the positining logic one more time to account for it.
-  const handleScrollButtonChange = useCallback(
-    (node: MultiSelectScrollButtonImplElement | null) => {
-      if (node && shouldRepositionRef.current === true) {
-        position()
-        focusSelectedItem?.()
-        shouldRepositionRef.current = false
-      }
-    },
-    [position, focusSelectedItem],
-  )
-
-  return (
-    <MultiSelectViewportProvider
-      contentWrapper={contentWrapper}
-      onScrollButtonChange={handleScrollButtonChange}
-      scope={__scopeMultiSelect}
-      shouldExpandOnScrollRef={shouldExpandOnScrollRef}
-    >
-      <div
-        ref={setContentWrapper}
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          position: 'fixed',
-          zIndex: contentZIndex,
-        }}
+    return (
+      <MultiSelectViewportProvider
+        contentWrapper={contentWrapper}
+        onScrollButtonChange={handleScrollButtonChange}
+        scope={__scopeMultiSelect}
+        shouldExpandOnScrollRef={shouldExpandOnScrollRef}
       >
-        <Primitive.div
-          {...popperProps}
-          ref={composedRefs}
+        <div
+          ref={setContentWrapper}
           style={{
-            // When we get the height of the content, it includes borders. If we were to set
-            // the height without having `boxSizing: 'border-box'` it would be too big.
-            boxSizing: 'border-box',
-            // We need to ensure the content doesn't get taller than the wrapper
-            maxHeight: '100%',
-            ...popperProps.style,
+            display: 'flex',
+            flexDirection: 'column',
+            position: 'fixed',
+            zIndex: contentZIndex,
           }}
-        />
-      </div>
-    </MultiSelectViewportProvider>
-  )
-}
+        >
+          <Primitive.div
+            {...popperProps}
+            ref={composedRefs}
+            style={{
+              // When we get the height of the content, it includes borders. If we were to set
+              // the height without having `boxSizing: 'border-box'` it would be too big.
+              boxSizing: 'border-box',
+              // We need to ensure the content doesn't get taller than the wrapper
+              maxHeight: '100%',
+              ...popperProps.style,
+            }}
+          />
+        </div>
+      </MultiSelectViewportProvider>
+    )
+  },
+)
 
 MultiSelectItemAlignedPosition.displayName =
   ITEM_ALIGNED_POSITION_NAME
@@ -982,330 +1033,349 @@ interface MultiSelectContentImplProps
   onPointerDownOutside?: DismissableLayerProps['onPointerDownOutside']
 
   position?: 'item-aligned' | 'popper'
-
-  ref?: React.Ref<MultiSelectContentImplElement | null>
 }
 
 const Slot = createSlot('MultiSelectContent.RemoveScroll')
 
-const MultiSelectContentImpl = ({
-  ref,
-  __scopeMultiSelect,
-  position = 'item-aligned',
-  onCloseAutoFocus,
-  onEscapeKeyDown,
-  onPointerDownOutside,
-  //
-  // PopperContent props
-  side,
-  sideOffset,
-  align,
-  alignOffset,
-  arrowPadding,
-  collisionBoundary,
-  collisionPadding,
-  sticky,
-  hideWhenDetached,
-  avoidCollisions,
-  onKeyDown,
-  style,
-  ...props
-}: ScopedProps<MultiSelectContentImplProps>): React.JSX.Element => {
-  const context = useMultiSelectContext(
-    CONTENT_NAME,
-    __scopeMultiSelect,
-  )
-  const [content, setContent] =
-    useState<MultiSelectContentImplElement | null>(null)
-  const [viewport, setViewport] =
-    useState<MultiSelectViewportElement | null>(null)
-  const composedRefs = useComposedRefs(ref, setContent)
-  const [selectedItem, setSelectedItem] =
-    useState<MultiSelectItemElement | null>(null)
-  const [selectedItemText, setSelectedItemText] =
-    useState<MultiSelectItemTextElement | null>(null)
-  const getItems = useCollection(__scopeMultiSelect)
-  const [isPositioned, setIsPositioned] = useState(false)
-  const lastSelectedItemFoundRef = useRef(false)
-  const firstValidItemFoundRef = useRef(false)
-
-  // aria-hide everything except the content (better supported equivalent to setting aria-modal)
-  useEffect(() => {
-    if (content) return hideOthers(content)
-  }, [content])
-
-  // Make sure the whole tree has focus guards as our `Select` may be
-  // the last element in the DOM (because of the `Portal`)
-  useFocusGuards()
-
-  const focusFirst = useCallback(
-    (candidates: Array<HTMLElement | null>) => {
-      const [firstItem, ...restItems] = getItems().map(
-        (item) => item.ref.current,
-      )
-      const [lastItem] = restItems.slice(-1)
-
-      const PREVIOUSLY_FOCUSED_ELEMENT = document.activeElement
-      for (const candidate of candidates) {
-        // if focus is already where we want to go, we don't want to keep going through the candidates
-        if (candidate === PREVIOUSLY_FOCUSED_ELEMENT) return
-        candidate?.scrollIntoView({ block: 'nearest' })
-        // viewport might have padding so scroll to its edges when focusing first/last items.
-        if (candidate === firstItem && viewport)
-          viewport.scrollTop = 0
-        if (candidate === lastItem && viewport)
-          viewport.scrollTop = viewport.scrollHeight
-        candidate?.focus()
-
-        if (document.activeElement !== PREVIOUSLY_FOCUSED_ELEMENT) {
-          return
-        }
-      }
+const MultiSelectContentImpl = forwardRef<
+  MultiSelectContentImplElement,
+  ScopedProps<MultiSelectContentImplProps>
+>(
+  (
+    {
+      __scopeMultiSelect,
+      position = 'item-aligned',
+      onCloseAutoFocus,
+      onEscapeKeyDown,
+      onPointerDownOutside,
+      //
+      // PopperContent props
+      side,
+      sideOffset,
+      align,
+      alignOffset,
+      arrowPadding,
+      collisionBoundary,
+      collisionPadding,
+      sticky,
+      hideWhenDetached,
+      avoidCollisions,
+      onKeyDown,
+      style,
+      ...props
     },
-    [getItems, viewport],
-  )
+    forwardedRef,
+  ) => {
+    const context = useMultiSelectContext(
+      CONTENT_NAME,
+      __scopeMultiSelect,
+    )
+    const [content, setContent] =
+      useState<MultiSelectContentImplElement | null>(null)
+    const [viewport, setViewport] =
+      useState<MultiSelectViewportElement | null>(null)
+    const composedRefs = useComposedRefs(forwardedRef, setContent)
+    const [selectedItem, setSelectedItem] =
+      useState<MultiSelectItemElement | null>(null)
+    const [selectedItemText, setSelectedItemText] =
+      useState<MultiSelectItemTextElement | null>(null)
+    const getItems = useCollection(__scopeMultiSelect)
+    const [isPositioned, setIsPositioned] = useState(false)
+    const lastSelectedItemFoundRef = useRef(false)
+    const firstValidItemFoundRef = useRef(false)
 
-  const focusSelectedItem = useCallbackRef(() =>
-    focusFirst([selectedItem, content]),
-  )
+    // aria-hide everything except the content (better supported equivalent to setting aria-modal)
+    useEffect(() => {
+      if (content) return hideOthers(content)
+    }, [content])
 
-  useEffect(() => {
-    if (isPositioned) {
-      focusSelectedItem()
-    }
-  }, [isPositioned, focusSelectedItem])
+    // Make sure the whole tree has focus guards as our `Select` may be
+    // the last element in the DOM (because of the `Portal`)
+    useFocusGuards()
 
-  // prevent selecting items on `pointerup` in some cases after opening from `pointerdown`
-  // and close on `pointerup` outside.
-  const { onOpenChange, triggerPointerDownPosRef } = context
-  useEffect(() => {
-    if (content) {
-      let pointerMoveDelta = { x: 0, y: 0 }
+    const focusFirst = useCallback(
+      (candidates: Array<HTMLElement | null>) => {
+        const [firstItem, ...restItems] = getItems().map(
+          (item) => item.ref.current,
+        )
+        const [lastItem] = restItems.slice(-1)
 
-      const handlePointerMove = (event: PointerEvent): void => {
-        pointerMoveDelta = {
-          x: Math.abs(
-            Math.round(event.pageX) -
-              (triggerPointerDownPosRef.current?.x ?? 0),
-          ),
-          y: Math.abs(
-            Math.round(event.pageY) -
-              (triggerPointerDownPosRef.current?.y ?? 0),
-          ),
-        }
-      }
-      const handlePointerUp = (event: PointerEvent): void => {
-        // If the pointer hasn't moved by a certain threshold then we prevent selecting item on `pointerup`.
-        if (pointerMoveDelta.x <= 10 && pointerMoveDelta.y <= 10) {
-          event.preventDefault()
-        } else {
-          // otherwise, if the event was outside the content, close.
-          if (!content.contains(event.target as HTMLElement)) {
-            onOpenChange(false)
+        const PREVIOUSLY_FOCUSED_ELEMENT = document.activeElement
+        for (const candidate of candidates) {
+          // if focus is already where we want to go, we don't want to keep going through the candidates
+          if (candidate === PREVIOUSLY_FOCUSED_ELEMENT) return
+          candidate?.scrollIntoView({ block: 'nearest' })
+          // viewport might have padding so scroll to its edges when focusing first/last items.
+          if (candidate === firstItem && viewport)
+            viewport.scrollTop = 0
+          if (candidate === lastItem && viewport)
+            viewport.scrollTop = viewport.scrollHeight
+          candidate?.focus()
+
+          if (document.activeElement !== PREVIOUSLY_FOCUSED_ELEMENT) {
+            return
           }
         }
-        document.removeEventListener('pointermove', handlePointerMove)
-        triggerPointerDownPosRef.current = null
+      },
+      [getItems, viewport],
+    )
+
+    const focusSelectedItem = useCallbackRef(() =>
+      focusFirst([selectedItem, content]),
+    )
+
+    useEffect(() => {
+      if (isPositioned) {
+        focusSelectedItem()
       }
+    }, [isPositioned, focusSelectedItem])
 
-      if (triggerPointerDownPosRef.current !== null) {
-        document.addEventListener('pointermove', handlePointerMove)
-        document.addEventListener('pointerup', handlePointerUp, {
-          capture: true,
-          once: true,
-        })
-      }
+    // prevent selecting items on `pointerup` in some cases after opening from `pointerdown`
+    // and close on `pointerup` outside.
+    const { onOpenChange, triggerPointerDownPosRef } = context
+    useEffect(() => {
+      if (content) {
+        let pointerMoveDelta = { x: 0, y: 0 }
 
-      return () => {
-        document.removeEventListener('pointermove', handlePointerMove)
-        document.removeEventListener('pointerup', handlePointerUp, {
-          capture: true,
-        })
-      }
-    }
-  }, [content, onOpenChange, triggerPointerDownPosRef])
-
-  useEffect(() => {
-    const close = (): void => onOpenChange(false)
-    window.addEventListener('blur', close)
-    window.addEventListener('resize', close)
-    return () => {
-      window.removeEventListener('blur', close)
-      window.removeEventListener('resize', close)
-    }
-  }, [onOpenChange])
-
-  const itemRefCallback = useCallback(
-    (
-      node: MultiSelectItemElement | null,
-      value: string,
-      disabled: boolean,
-    ) => {
-      const isFirstValidItem =
-        !firstValidItemFoundRef.current &&
-        !disabled &&
-        !(context.hideSelectedOptions && value in context.valueMap)
-      const isLastSelectedItem =
-        context.value[context.value.length - 1] === value &&
-        !lastSelectedItemFoundRef.current &&
-        !context.hideSelectedOptions
-      if (isLastSelectedItem || isFirstValidItem) {
-        setSelectedItem(node)
-        if (isFirstValidItem) firstValidItemFoundRef.current = true
-        if (isLastSelectedItem)
-          lastSelectedItemFoundRef.current = true
-      }
-    },
-    [context.value, context.valueMap, context.hideSelectedOptions],
-  )
-  const handleItemLeave = useCallback(
-    () => content?.focus(),
-    [content],
-  )
-  const itemTextRefCallback = useCallback(
-    (
-      node: MultiSelectItemTextElement | null,
-      value: string,
-      disabled: boolean,
-    ) => {
-      const isFirstValidItem =
-        !firstValidItemFoundRef.current &&
-        !disabled &&
-        !(context.hideSelectedOptions && value in context.valueMap)
-      const isLastSelectedItem =
-        context.value[context.value.length - 1] === value &&
-        !lastSelectedItemFoundRef.current &&
-        !context.hideSelectedOptions
-      if (isLastSelectedItem || isFirstValidItem) {
-        setSelectedItemText(node)
-      }
-    },
-    [context.value, context.valueMap, context.hideSelectedOptions],
-  )
-
-  const MultiSelectPosition =
-    position === 'popper'
-      ? MultiSelectPopperPosition
-      : MultiSelectItemAlignedPosition
-
-  // Silently ignore props that are not supported by `SelectItemAlignedPosition`
-  const popperContentProps =
-    MultiSelectPosition === MultiSelectPopperPosition
-      ? {
-          side,
-          sideOffset,
-          align,
-          alignOffset,
-          arrowPadding,
-          collisionBoundary,
-          collisionPadding,
-          sticky,
-          hideWhenDetached,
-          avoidCollisions,
+        const handlePointerMove = (event: PointerEvent): void => {
+          pointerMoveDelta = {
+            x: Math.abs(
+              Math.round(event.pageX) -
+                (triggerPointerDownPosRef.current?.x ?? 0),
+            ),
+            y: Math.abs(
+              Math.round(event.pageY) -
+                (triggerPointerDownPosRef.current?.y ?? 0),
+            ),
+          }
         }
-      : {}
-
-  return (
-    <MultiSelectContentProvider
-      itemRefCallback={itemRefCallback}
-      itemTextRefCallback={itemTextRefCallback}
-      selectedItem={selectedItem}
-      selectedItemText={selectedItemText}
-      content={content}
-      focusSelectedItem={focusSelectedItem}
-      isPositioned={isPositioned}
-      onItemLeave={handleItemLeave}
-      onViewportChange={setViewport}
-      position={position}
-      scope={__scopeMultiSelect}
-      viewport={viewport}
-    >
-      <RemoveScroll as={Slot} allowPinchZoom>
-        <FocusScope
-          // we make sure we're not trapping once it's been closed
-          // (closed !== unmounted when animating out)
-          trapped={context.open}
-          onMountAutoFocus={(event: Event) => {
-            // we prevent open autofocus because we manually focus the selected item
+        const handlePointerUp = (event: PointerEvent): void => {
+          // If the pointer hasn't moved by a certain threshold then we prevent selecting item on `pointerup`.
+          if (pointerMoveDelta.x <= 10 && pointerMoveDelta.y <= 10) {
             event.preventDefault()
-          }}
-          onUnmountAutoFocus={composeEventHandlers(
-            onCloseAutoFocus,
-            (event: Event) => {
-              context.trigger?.focus({ preventScroll: true })
+          } else {
+            // otherwise, if the event was outside the content, close.
+            if (!content.contains(event.target as HTMLElement)) {
+              onOpenChange(false)
+            }
+          }
+          document.removeEventListener(
+            'pointermove',
+            handlePointerMove,
+          )
+          triggerPointerDownPosRef.current = null
+        }
+
+        if (triggerPointerDownPosRef.current !== null) {
+          document.addEventListener('pointermove', handlePointerMove)
+          document.addEventListener('pointerup', handlePointerUp, {
+            capture: true,
+            once: true,
+          })
+        }
+
+        return () => {
+          document.removeEventListener(
+            'pointermove',
+            handlePointerMove,
+          )
+          document.removeEventListener('pointerup', handlePointerUp, {
+            capture: true,
+          })
+        }
+      }
+    }, [content, onOpenChange, triggerPointerDownPosRef])
+
+    useEffect(() => {
+      const close = (): void => onOpenChange(false)
+      window.addEventListener('blur', close)
+      window.addEventListener('resize', close)
+      return () => {
+        window.removeEventListener('blur', close)
+        window.removeEventListener('resize', close)
+      }
+    }, [onOpenChange])
+
+    const itemRefCallback = useCallback(
+      (
+        node: MultiSelectItemElement | null,
+        value: string,
+        disabled: boolean,
+      ) => {
+        const isFirstValidItem =
+          !firstValidItemFoundRef.current &&
+          !disabled &&
+          !(context.hideSelectedOptions && value in context.valueMap)
+        const isLastSelectedItem =
+          context.value[context.value.length - 1] === value &&
+          !lastSelectedItemFoundRef.current &&
+          !context.hideSelectedOptions
+        if (isLastSelectedItem || isFirstValidItem) {
+          setSelectedItem(node)
+          if (isFirstValidItem) firstValidItemFoundRef.current = true
+          if (isLastSelectedItem)
+            lastSelectedItemFoundRef.current = true
+        }
+      },
+      [context.value, context.valueMap, context.hideSelectedOptions],
+    )
+    const handleItemLeave = useCallback(
+      () => content?.focus(),
+      [content],
+    )
+    const itemTextRefCallback = useCallback(
+      (
+        node: MultiSelectItemTextElement | null,
+        value: string,
+        disabled: boolean,
+      ) => {
+        const isFirstValidItem =
+          !firstValidItemFoundRef.current &&
+          !disabled &&
+          !(context.hideSelectedOptions && value in context.valueMap)
+        const isLastSelectedItem =
+          context.value[context.value.length - 1] === value &&
+          !lastSelectedItemFoundRef.current &&
+          !context.hideSelectedOptions
+        if (isLastSelectedItem || isFirstValidItem) {
+          setSelectedItemText(node)
+        }
+      },
+      [context.value, context.valueMap, context.hideSelectedOptions],
+    )
+
+    const MultiSelectPosition =
+      position === 'popper'
+        ? MultiSelectPopperPosition
+        : MultiSelectItemAlignedPosition
+
+    // Silently ignore props that are not supported by `SelectItemAlignedPosition`
+    const popperContentProps =
+      MultiSelectPosition === MultiSelectPopperPosition
+        ? {
+            side,
+            sideOffset,
+            align,
+            alignOffset,
+            arrowPadding,
+            collisionBoundary,
+            collisionPadding,
+            sticky,
+            hideWhenDetached,
+            avoidCollisions,
+          }
+        : {}
+
+    return (
+      <MultiSelectContentProvider
+        itemRefCallback={itemRefCallback}
+        itemTextRefCallback={itemTextRefCallback}
+        selectedItem={selectedItem}
+        selectedItemText={selectedItemText}
+        content={content}
+        focusSelectedItem={focusSelectedItem}
+        isPositioned={isPositioned}
+        onItemLeave={handleItemLeave}
+        onViewportChange={setViewport}
+        position={position}
+        scope={__scopeMultiSelect}
+        viewport={viewport}
+      >
+        <RemoveScroll as={Slot} allowPinchZoom>
+          <FocusScope
+            // we make sure we're not trapping once it's been closed
+            // (closed !== unmounted when animating out)
+            trapped={context.open}
+            onMountAutoFocus={(event: Event) => {
+              // we prevent open autofocus because we manually focus the selected item
               event.preventDefault()
-            },
-          )}
-          asChild
-        >
-          <DismissableLayer
-            disableOutsidePointerEvents
-            onDismiss={() => context.onOpenChange(false)}
-            onEscapeKeyDown={onEscapeKeyDown}
-            // When focus is trapped, a focusout event may still happen.
-            // We make sure we don't trigger our `onDismiss` in such case.
-            onFocusOutside={(event) => event.preventDefault()}
-            onPointerDownOutside={onPointerDownOutside}
+            }}
+            onUnmountAutoFocus={composeEventHandlers(
+              onCloseAutoFocus,
+              (event: Event) => {
+                context.trigger?.focus({ preventScroll: true })
+                event.preventDefault()
+              },
+            )}
             asChild
           >
-            <MultiSelectPosition
-              ref={composedRefs}
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                outline: 'none',
-                ...style,
-              }}
-              data-state={context.open ? 'open' : 'closed'}
-              dir={context.dir}
-              id={context.contentId}
-              onContextMenu={(event) => event.preventDefault()}
-              onKeyDown={composeEventHandlers(onKeyDown, (event) => {
-                if (event.key === 'Tab') event.preventDefault()
+            <DismissableLayer
+              disableOutsidePointerEvents
+              onDismiss={() => context.onOpenChange(false)}
+              onEscapeKeyDown={onEscapeKeyDown}
+              // When focus is trapped, a focusout event may still happen.
+              // We make sure we don't trigger our `onDismiss` in such case.
+              onFocusOutside={(event) => event.preventDefault()}
+              onPointerDownOutside={onPointerDownOutside}
+              asChild
+            >
+              <MultiSelectPosition
+                ref={composedRefs}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  outline: 'none',
+                  ...style,
+                }}
+                data-state={context.open ? 'open' : 'closed'}
+                dir={context.dir}
+                id={context.contentId}
+                onContextMenu={(event) => event.preventDefault()}
+                onKeyDown={composeEventHandlers(
+                  onKeyDown,
+                  (event) => {
+                    if (event.key === 'Tab') event.preventDefault()
 
-                if (
-                  ['ArrowDown', 'ArrowUp', 'End', 'Home'].includes(
-                    event.key,
-                  )
-                ) {
-                  const items = getItems().filter(
-                    (item) => !item.disabled,
-                  )
-                  let candidateNodes = items.map(
-                    (item) => item.ref.current!,
-                  )
+                    if (
+                      [
+                        'ArrowDown',
+                        'ArrowUp',
+                        'End',
+                        'Home',
+                      ].includes(event.key)
+                    ) {
+                      const items = getItems().filter(
+                        (item) => !item.disabled,
+                      )
+                      let candidateNodes = items.map(
+                        (item) => item.ref.current!,
+                      )
 
-                  if (['ArrowUp', 'End'].includes(event.key)) {
-                    candidateNodes = [...candidateNodes]
-                    candidateNodes.reverse()
-                  }
+                      if (['ArrowUp', 'End'].includes(event.key)) {
+                        candidateNodes = [...candidateNodes]
+                        candidateNodes.reverse()
+                      }
 
-                  if (['ArrowDown', 'ArrowUp'].includes(event.key)) {
-                    const currentElement =
-                      event.target as MultiSelectItemElement
-                    const currentIndex =
-                      candidateNodes.indexOf(currentElement)
+                      if (
+                        ['ArrowDown', 'ArrowUp'].includes(event.key)
+                      ) {
+                        const currentElement =
+                          event.target as MultiSelectItemElement
+                        const currentIndex =
+                          candidateNodes.indexOf(currentElement)
 
-                    candidateNodes = candidateNodes.slice(
-                      currentIndex + 1,
-                    )
-                  }
+                        candidateNodes = candidateNodes.slice(
+                          currentIndex + 1,
+                        )
+                      }
 
-                  setTimeout(() => focusFirst(candidateNodes))
-                  event.preventDefault()
-                }
-              })}
-              onPlaced={() => setIsPositioned(true)}
-              role='listbox'
-              {...props}
-              {...popperContentProps}
-            />
-          </DismissableLayer>
-        </FocusScope>
-      </RemoveScroll>
-    </MultiSelectContentProvider>
-  )
-}
+                      setTimeout(() => focusFirst(candidateNodes))
+                      event.preventDefault()
+                    }
+                  },
+                )}
+                onPlaced={() => setIsPositioned(true)}
+                role='listbox'
+                {...props}
+                {...popperContentProps}
+              />
+            </DismissableLayer>
+          </FocusScope>
+        </RemoveScroll>
+      </MultiSelectContentProvider>
+    )
+  },
+)
 
 MultiSelectContentImpl.displayName = CONTENT_IMPL_NAME
 
@@ -1317,42 +1387,51 @@ type MultiSelectContentElement = MultiSelectContentImplElement
 interface MultiSelectContentProps
   extends MultiSelectContentImplProps {}
 
-const MultiSelectContent = ({
-  __scopeMultiSelect,
-  ...props
-}: ScopedProps<MultiSelectContentProps>): React.JSX.Element | null => {
-  const context = useMultiSelectContext(
-    CONTENT_NAME,
-    __scopeMultiSelect,
-  )
-  const [fragment, setFragment] = useState<DocumentFragment>()
+const MultiSelectContent = forwardRef<
+  MultiSelectContentElement,
+  MultiSelectContentProps
+>(
+  (
+    {
+      __scopeMultiSelect,
+      ...props
+    }: ScopedProps<MultiSelectContentProps>,
+    forwardedRef,
+  ) => {
+    const context = useMultiSelectContext(
+      CONTENT_NAME,
+      __scopeMultiSelect,
+    )
+    const [fragment, setFragment] = useState<DocumentFragment>()
 
-  // setting the fragment in `useLayoutEffect` as `DocumentFragment` doesn't exist on the server
-  useLayoutEffect(() => {
-    setFragment(new DocumentFragment())
-  }, [])
+    // setting the fragment in `useLayoutEffect` as `DocumentFragment` doesn't exist on the server
+    useLayoutEffect(() => {
+      setFragment(new DocumentFragment())
+    }, [])
 
-  if (!context.open) {
-    const frag = fragment as Element | undefined
-    return frag
-      ? ReactDOM.createPortal(
-          <MultiSelectContentProvider scope={__scopeMultiSelect}>
-            <CollectionSlot scope={__scopeMultiSelect}>
-              <div>{props.children}</div>
-            </CollectionSlot>
-          </MultiSelectContentProvider>,
-          frag,
-        )
-      : null
-  }
+    if (!context.open) {
+      const frag = fragment as Element | undefined
+      return frag
+        ? ReactDOM.createPortal(
+            <MultiSelectContentProvider scope={__scopeMultiSelect}>
+              <CollectionSlot scope={__scopeMultiSelect}>
+                <div>{props.children}</div>
+              </CollectionSlot>
+            </MultiSelectContentProvider>,
+            frag,
+          )
+        : null
+    }
 
-  return (
-    <MultiSelectContentImpl
-      __scopeMultiSelect={__scopeMultiSelect}
-      {...props}
-    />
-  )
-}
+    return (
+      <MultiSelectContentImpl
+        __scopeMultiSelect={__scopeMultiSelect}
+        {...props}
+        ref={forwardedRef}
+      />
+    )
+  },
+)
 
 MultiSelectContent.displayName = CONTENT_NAME
 
@@ -1360,13 +1439,16 @@ MultiSelectContent.displayName = CONTENT_NAME
  * SelectGroup
  * -----------------------------------------------------------------------------------------------*/
 
+type MultiSelectGroupElement = React.ComponentRef<
+  typeof Primitive.div
+>
 interface MultiSelectGroupProps
-  extends React.ComponentProps<typeof Primitive.div> {}
+  extends React.ComponentPropsWithoutRef<typeof Primitive.div> {}
 
-const MultiSelectGroup = ({
-  __scopeMultiSelect,
-  ...props
-}: ScopedProps<MultiSelectGroupProps>): React.JSX.Element => {
+const MultiSelectGroup = forwardRef<
+  MultiSelectGroupElement,
+  ScopedProps<MultiSelectGroupProps>
+>(({ __scopeMultiSelect, ...props }, forwardedRef) => {
   const groupId = useId()
   return (
     <MultiSelectGroupContextProvider
@@ -1374,13 +1456,14 @@ const MultiSelectGroup = ({
       scope={__scopeMultiSelect}
     >
       <Primitive.div
+        ref={forwardedRef}
         aria-labelledby={groupId}
         role='group'
         {...props}
       />
     </MultiSelectGroupContextProvider>
   )
-}
+})
 
 MultiSelectGroup.displayName = GROUP_NAME
 
@@ -1388,19 +1471,22 @@ MultiSelectGroup.displayName = GROUP_NAME
  * SelectLabel
  * -----------------------------------------------------------------------------------------------*/
 
+type MultiSelectLabelElement = React.ComponentRef<
+  typeof Primitive.div
+>
 interface MultiSelectLabelProps
-  extends React.ComponentProps<typeof Primitive.div> {}
+  extends React.ComponentPropsWithoutRef<typeof Primitive.div> {}
 
-const MultiSelectLabel = ({
-  __scopeMultiSelect,
-  ...props
-}: ScopedProps<MultiSelectLabelProps>): React.JSX.Element => {
+const MultiSelectLabel = forwardRef<
+  MultiSelectLabelElement,
+  ScopedProps<MultiSelectLabelProps>
+>(({ __scopeMultiSelect, ...props }, ref) => {
   const groupContext = useMultiSelectGroupContext(
     LABEL_NAME,
     __scopeMultiSelect,
   )
-  return <Primitive.div id={groupContext.id} {...props} />
-}
+  return <Primitive.div ref={ref} id={groupContext.id} {...props} />
+})
 
 MultiSelectLabel.displayName = LABEL_NAME
 
@@ -1410,168 +1496,181 @@ MultiSelectLabel.displayName = LABEL_NAME
 
 type MultiSelectItemElement = React.ComponentRef<typeof Primitive.div>
 interface MultiSelectItemProps
-  extends React.ComponentProps<typeof Primitive.div> {
+  extends React.ComponentPropsWithoutRef<typeof Primitive.div> {
   disabled?: boolean
   textValue?: string
   value: string
 }
 
-const MultiSelectItem = ({
-  __scopeMultiSelect,
-  value,
-  disabled = false,
-  textValue: textValueProp,
-  ref: forwardedRef,
-  onBlur,
-  onPointerDown,
-  onPointerLeave,
-  onClick,
-  onFocus,
-  onKeyDown,
-  onPointerMove,
-  onPointerUp,
-  ...props
-}: ScopedProps<MultiSelectItemProps>): React.JSX.Element => {
-  const context = useMultiSelectContext(ITEM_NAME, __scopeMultiSelect)
-  const contentContext = useMultiSelectContentContext(
-    ITEM_NAME,
-    __scopeMultiSelect,
-  )
-  const isSelected = value in context.valueMap
-  const [textValue, setTextValue] = useState(textValueProp ?? '')
-  const [isFocused, setIsFocused] = useState(false)
-  const rootRef = useRef<HTMLDivElement | null>(null)
-  const onItemNodeChange = useCallbackRef(
-    (node: HTMLDivElement | null) =>
-      contentContext.itemRefCallback?.(node, value, disabled),
-  )
-  const composedRefs = useComposedRefs(
-    rootRef,
+const MultiSelectItem = forwardRef<
+  MultiSelectItemElement,
+  ScopedProps<MultiSelectItemProps>
+>(
+  (
+    {
+      __scopeMultiSelect,
+      value,
+      disabled = false,
+      textValue: textValueProp,
+      onBlur,
+      onPointerDown,
+      onPointerLeave,
+      onClick,
+      onFocus,
+      onKeyDown,
+      onPointerMove,
+      onPointerUp,
+      ...props
+    },
     forwardedRef,
-    onItemNodeChange,
-  )
-  const textId = useId()
-  const pointerTypeRef =
-    useRef<React.PointerEvent['pointerType']>('touch')
-
-  const handleSelect = (): void => {
-    if (!disabled) {
-      context.onValueChange((curr) => {
-        if (curr.includes(value)) {
-          return curr.filter((selected) => selected !== value)
-        }
-
-        if (curr.length < context.maxValues) {
-          return [...curr, value]
-        }
-
-        return curr
-      })
-    }
-  }
-
-  if (value === '') {
-    throw new Error(
-      'A <MultiSelect.Item /> must have a value prop that is not an empty string.',
+  ) => {
+    const context = useMultiSelectContext(
+      ITEM_NAME,
+      __scopeMultiSelect,
     )
-  }
+    const contentContext = useMultiSelectContentContext(
+      ITEM_NAME,
+      __scopeMultiSelect,
+    )
+    const isSelected = value in context.valueMap
+    const [textValue, setTextValue] = useState(textValueProp ?? '')
+    const [isFocused, setIsFocused] = useState(false)
+    const rootRef = useRef<HTMLDivElement | null>(null)
+    const onItemNodeChange = useCallbackRef(
+      (node: HTMLDivElement | null) =>
+        contentContext.itemRefCallback?.(node, value, disabled),
+    )
+    const composedRefs = useComposedRefs(
+      rootRef,
+      forwardedRef,
+      onItemNodeChange,
+    )
+    const textId = useId()
+    const pointerTypeRef =
+      useRef<React.PointerEvent['pointerType']>('touch')
 
-  return (
-    <MultiSelectItemContextProvider
-      disabled={disabled}
-      isSelected={isSelected}
-      textId={textId}
-      value={value}
-      onItemTextChange={useCallback((node) => {
-        setTextValue(
-          (prevTextValue) =>
-            prevTextValue || (node?.textContent ?? '').trim(),
-        )
-      }, [])}
-      rootRef={rootRef}
-      scope={__scopeMultiSelect}
-    >
-      <CollectionItemSlot
+    const handleSelect = (): void => {
+      if (!disabled) {
+        context.onValueChange((curr) => {
+          if (curr.includes(value)) {
+            return curr.filter((selected) => selected !== value)
+          }
+
+          if (curr.length < context.maxValues) {
+            return [...curr, value]
+          }
+
+          return curr
+        })
+      }
+    }
+
+    if (value === '') {
+      throw new Error(
+        'A <MultiSelect.Item /> must have a value prop that is not an empty string.',
+      )
+    }
+
+    return (
+      <MultiSelectItemContextProvider
         disabled={disabled}
-        textValue={textValue}
+        isSelected={isSelected}
+        textId={textId}
         value={value}
+        onItemTextChange={useCallback((node) => {
+          setTextValue(
+            (prevTextValue) =>
+              prevTextValue || (node?.textContent ?? '').trim(),
+          )
+        }, [])}
+        rootRef={rootRef}
         scope={__scopeMultiSelect}
       >
-        <Primitive.div
-          ref={composedRefs}
-          aria-disabled={disabled || undefined}
-          aria-hidden={context.hideSelectedOptions && isSelected}
-          aria-labelledby={textId}
-          // `isFocused` caveat fixes stuttering in VoiceOver
-          aria-selected={isSelected && isFocused}
-          data-disabled={disabled ? '' : undefined}
-          data-highlighted={isFocused ? '' : undefined}
-          data-state={isSelected ? 'checked' : 'unchecked'}
-          hidden={context.hideSelectedOptions && isSelected}
-          tabIndex={disabled ? undefined : -1}
-          onBlur={composeEventHandlers(onBlur, () =>
-            setIsFocused(false),
-          )}
-          onClick={composeEventHandlers(onClick, () => {
-            // Open on click when using a touch or pen device
-            if (pointerTypeRef.current !== 'mouse') handleSelect()
-          })}
-          onFocus={composeEventHandlers(onFocus, () =>
-            setIsFocused(true),
-          )}
-          onKeyDown={composeEventHandlers(onKeyDown, (event) => {
-            if (SELECTION_KEYS.includes(event.key)) handleSelect()
-            // prevent page scroll if using the space key to select an item
-            if (event.key === ' ') event.preventDefault()
-          })}
-          onPointerDown={composeEventHandlers(
-            onPointerDown,
-            (event) => {
-              pointerTypeRef.current = event.pointerType
-            },
-          )}
-          onPointerLeave={composeEventHandlers(
-            onPointerLeave,
-            (event) => {
-              if (event.currentTarget === document.activeElement) {
-                contentContext.onItemLeave?.()
-              }
-            },
-          )}
-          onPointerMove={composeEventHandlers(
-            onPointerMove,
-            (event) => {
-              // Remember pointer type when sliding over to this item from another one
-              pointerTypeRef.current = event.pointerType
-              if (disabled) {
-                contentContext.onItemLeave?.()
-              } else if (
-                pointerTypeRef.current === 'mouse' &&
-                event.currentTarget.contains(event.target as Node)
-              ) {
-                // even though safari doesn't support this option, it's acceptable
-                // as it only means it might scroll a few pixels when using the pointer.
-                event.currentTarget.focus({ preventScroll: true })
-              }
-            },
-          )}
-          onPointerUp={composeEventHandlers(onPointerUp, (event) => {
-            // Using a mouse you should be able to do pointer down, move through
-            // the list, and release the pointer over the item to select it.
-            // Also this element should be parent of the target or be the target of event to prevent unexpected behaviour
-            if (
-              pointerTypeRef.current === 'mouse' &&
-              event.currentTarget.contains(event.target as Node)
-            )
-              handleSelect()
-          })}
-          role='option'
-          {...props}
-        />
-      </CollectionItemSlot>
-    </MultiSelectItemContextProvider>
-  )
-}
+        <CollectionItemSlot
+          disabled={disabled}
+          textValue={textValue}
+          value={value}
+          scope={__scopeMultiSelect}
+        >
+          <Primitive.div
+            ref={composedRefs}
+            aria-disabled={disabled || undefined}
+            aria-hidden={context.hideSelectedOptions && isSelected}
+            aria-labelledby={textId}
+            // `isFocused` caveat fixes stuttering in VoiceOver
+            aria-selected={isSelected && isFocused}
+            data-disabled={disabled ? '' : undefined}
+            data-highlighted={isFocused ? '' : undefined}
+            data-state={isSelected ? 'checked' : 'unchecked'}
+            hidden={context.hideSelectedOptions && isSelected}
+            tabIndex={disabled ? undefined : -1}
+            onBlur={composeEventHandlers(onBlur, () =>
+              setIsFocused(false),
+            )}
+            onClick={composeEventHandlers(onClick, () => {
+              // Open on click when using a touch or pen device
+              if (pointerTypeRef.current !== 'mouse') handleSelect()
+            })}
+            onFocus={composeEventHandlers(onFocus, () =>
+              setIsFocused(true),
+            )}
+            onKeyDown={composeEventHandlers(onKeyDown, (event) => {
+              if (SELECTION_KEYS.includes(event.key)) handleSelect()
+              // prevent page scroll if using the space key to select an item
+              if (event.key === ' ') event.preventDefault()
+            })}
+            onPointerDown={composeEventHandlers(
+              onPointerDown,
+              (event) => {
+                pointerTypeRef.current = event.pointerType
+              },
+            )}
+            onPointerLeave={composeEventHandlers(
+              onPointerLeave,
+              (event) => {
+                if (event.currentTarget === document.activeElement) {
+                  contentContext.onItemLeave?.()
+                }
+              },
+            )}
+            onPointerMove={composeEventHandlers(
+              onPointerMove,
+              (event) => {
+                // Remember pointer type when sliding over to this item from another one
+                pointerTypeRef.current = event.pointerType
+                if (disabled) {
+                  contentContext.onItemLeave?.()
+                } else if (
+                  pointerTypeRef.current === 'mouse' &&
+                  event.currentTarget.contains(event.target as Node)
+                ) {
+                  // even though safari doesn't support this option, it's acceptable
+                  // as it only means it might scroll a few pixels when using the pointer.
+                  event.currentTarget.focus({ preventScroll: true })
+                }
+              },
+            )}
+            onPointerUp={composeEventHandlers(
+              onPointerUp,
+              (event) => {
+                // Using a mouse you should be able to do pointer down, move through
+                // the list, and release the pointer over the item to select it.
+                // Also this element should be parent of the target or be the target of event to prevent unexpected behaviour
+                if (
+                  pointerTypeRef.current === 'mouse' &&
+                  event.currentTarget.contains(event.target as Node)
+                )
+                  handleSelect()
+              },
+            )}
+            role='option'
+            {...props}
+          />
+        </CollectionItemSlot>
+      </MultiSelectItemContextProvider>
+    )
+  },
+)
 
 MultiSelectItem.displayName = ITEM_NAME
 
@@ -1583,50 +1682,57 @@ type MultiSelectItemTextElement = React.ComponentRef<
   typeof Primitive.span
 >
 interface MultiSelectItemTextProps
-  extends React.ComponentProps<typeof Primitive.span> {}
+  extends React.ComponentPropsWithoutRef<typeof Primitive.span> {}
 
-const MultiSelectItemText = ({
-  __scopeMultiSelect,
-  // We ignore `className` and `style` as this part shouldn't be styled.
-  className,
-  style,
-  ref,
-  children,
-  ...props
-}: ScopedProps<MultiSelectItemTextProps>): React.JSX.Element => {
-  const contentContext = useMultiSelectContentContext(
-    ITEM_TEXT_NAME,
-    __scopeMultiSelect,
-  )
-  const itemContext = useMultiSelectItemContext(
-    ITEM_TEXT_NAME,
-    __scopeMultiSelect,
-  )
-  const onItemTextNodeChange = useCallbackRef(
-    (node: MultiSelectItemTextElement | null) =>
-      contentContext.itemTextRefCallback?.(
-        node,
-        itemContext.value,
-        itemContext.disabled,
-      ),
-  )
+const MultiSelectItemText = forwardRef<
+  MultiSelectItemTextElement,
+  ScopedProps<MultiSelectItemTextProps>
+>(
+  (
+    {
+      __scopeMultiSelect,
+      // We ignore `className` and `style` as this part shouldn't be styled.
+      className,
+      style,
+      children,
+      ...props
+    },
+    forwardedRef,
+  ) => {
+    const contentContext = useMultiSelectContentContext(
+      ITEM_TEXT_NAME,
+      __scopeMultiSelect,
+    )
+    const itemContext = useMultiSelectItemContext(
+      ITEM_TEXT_NAME,
+      __scopeMultiSelect,
+    )
+    const onItemTextNodeChange = useCallbackRef(
+      (node: MultiSelectItemTextElement | null) =>
+        contentContext.itemTextRefCallback?.(
+          node,
+          itemContext.value,
+          itemContext.disabled,
+        ),
+    )
 
-  const composedRefs = useComposedRefs(
-    ref,
-    itemContext.onItemTextChange,
-    onItemTextNodeChange,
-  )
+    const composedRefs = useComposedRefs(
+      forwardedRef,
+      itemContext.onItemTextChange,
+      onItemTextNodeChange,
+    )
 
-  return (
-    <Primitive.span
-      ref={composedRefs}
-      id={itemContext.textId}
-      {...props}
-    >
-      {children}
-    </Primitive.span>
-  )
-}
+    return (
+      <Primitive.span
+        ref={composedRefs}
+        id={itemContext.textId}
+        {...props}
+      >
+        {children}
+      </Primitive.span>
+    )
+  },
+)
 
 MultiSelectItemText.displayName = ITEM_TEXT_NAME
 
@@ -1634,21 +1740,25 @@ MultiSelectItemText.displayName = ITEM_TEXT_NAME
  * SelectItemIndicator
  * -----------------------------------------------------------------------------------------------*/
 
-interface MultiSelectItemIndicatorProps
-  extends React.ComponentProps<typeof Primitive.span> {}
+type MultiSelectItemIndicatorElement = React.ComponentRef<
+  typeof Primitive.span
+>
 
-const MultiSelectItemIndicator = ({
-  __scopeMultiSelect,
-  ...props
-}: ScopedProps<MultiSelectItemIndicatorProps>): React.JSX.Element | null => {
+interface MultiSelectItemIndicatorProps
+  extends React.ComponentPropsWithoutRef<typeof Primitive.span> {}
+
+const MultiSelectItemIndicator = forwardRef<
+  MultiSelectItemIndicatorElement,
+  ScopedProps<MultiSelectItemIndicatorProps>
+>(({ __scopeMultiSelect, ...props }, forwardedRef) => {
   const itemContext = useMultiSelectItemContext(
     ITEM_INDICATOR_NAME,
     __scopeMultiSelect,
   )
   return itemContext.isSelected ? (
-    <Primitive.span aria-hidden {...props} />
+    <Primitive.span ref={forwardedRef} aria-hidden {...props} />
   ) : null
-}
+})
 
 MultiSelectItemIndicator.displayName = ITEM_INDICATOR_NAME
 
@@ -1660,85 +1770,96 @@ type MultiSelectScrollButtonImplElement = React.ComponentRef<
   typeof Primitive.div
 >
 interface MultiSelectScrollButtonImplProps
-  extends React.ComponentProps<typeof Primitive.div> {
+  extends React.ComponentPropsWithoutRef<typeof Primitive.div> {
   onAutoScroll: () => void
 }
 
-const MultiSelectScrollButtonImpl = ({
-  __scopeMultiSelect,
-  onAutoScroll,
-  style,
-  onPointerDown,
-  onPointerLeave,
-  onPointerMove,
-  ...props
-}: ScopedProps<MultiSelectScrollButtonImplProps>): React.JSX.Element | null => {
-  const contentContext = useMultiSelectContentContext(
-    'MultiSelectScrollButton',
-    __scopeMultiSelect,
-  )
-  const autoScrollTimerRef = useRef<number | null>(null)
-  const getItems = useCollection(__scopeMultiSelect)
-
-  const clearAutoScrollTimer = useCallback(() => {
-    if (autoScrollTimerRef.current !== null) {
-      window.clearInterval(autoScrollTimerRef.current)
-      autoScrollTimerRef.current = null
-    }
-  }, [])
-
-  useEffect(() => {
-    return () => clearAutoScrollTimer()
-  }, [clearAutoScrollTimer])
-
-  // When the viewport becomes scrollable on either side, the relevant scroll button will mount.
-  // Because it is part of the normal flow, it will push down (top button) or shrink (bottom button)
-  // the viewport, potentially causing the active item to now be partially out of view.
-  // We re-run the `scrollIntoView` logic to make sure it stays within the viewport.
-  useLayoutEffect(() => {
-    const activeItem = getItems().find(
-      (item) => item.ref.current === document.activeElement,
+const MultiSelectScrollButtonImpl = forwardRef<
+  MultiSelectScrollButtonImplElement,
+  ScopedProps<MultiSelectScrollButtonImplProps>
+>(
+  (
+    {
+      __scopeMultiSelect,
+      onAutoScroll,
+      style,
+      onPointerDown,
+      onPointerLeave,
+      onPointerMove,
+      ...props
+    },
+    forwardedRef,
+  ) => {
+    const contentContext = useMultiSelectContentContext(
+      'MultiSelectScrollButton',
+      __scopeMultiSelect,
     )
-    activeItem?.ref.current?.scrollIntoView({ block: 'nearest' })
-  }, [getItems])
+    const autoScrollTimerRef = useRef<number | null>(null)
+    const getItems = useCollection(__scopeMultiSelect)
 
-  return (
-    <Primitive.div
-      aria-hidden
-      {...props}
-      style={{ flexShrink: 0, ...style }}
-      onPointerDown={composeEventHandlers(onPointerDown, () => {
-        if (autoScrollTimerRef.current === null) {
-          autoScrollTimerRef.current = window.setInterval(
-            onAutoScroll,
-            50,
-          )
-        }
-      })}
-      onPointerLeave={composeEventHandlers(onPointerLeave, () => {
-        clearAutoScrollTimer()
-      })}
-      onPointerMove={composeEventHandlers(onPointerMove, () => {
-        contentContext.onItemLeave?.()
-        if (autoScrollTimerRef.current === null) {
-          autoScrollTimerRef.current = window.setInterval(
-            onAutoScroll,
-            50,
-          )
-        }
-      })}
-    />
-  )
-}
+    const clearAutoScrollTimer = useCallback(() => {
+      if (autoScrollTimerRef.current !== null) {
+        window.clearInterval(autoScrollTimerRef.current)
+        autoScrollTimerRef.current = null
+      }
+    }, [])
+
+    useEffect(() => {
+      return () => clearAutoScrollTimer()
+    }, [clearAutoScrollTimer])
+
+    // When the viewport becomes scrollable on either side, the relevant scroll button will mount.
+    // Because it is part of the normal flow, it will push down (top button) or shrink (bottom button)
+    // the viewport, potentially causing the active item to now be partially out of view.
+    // We re-run the `scrollIntoView` logic to make sure it stays within the viewport.
+    useLayoutEffect(() => {
+      const activeItem = getItems().find(
+        (item) => item.ref.current === document.activeElement,
+      )
+      activeItem?.ref.current?.scrollIntoView({ block: 'nearest' })
+    }, [getItems])
+
+    return (
+      <Primitive.div
+        ref={forwardedRef}
+        style={{ flexShrink: 0, ...style }}
+        onPointerDown={composeEventHandlers(onPointerDown, () => {
+          if (autoScrollTimerRef.current === null) {
+            autoScrollTimerRef.current = window.setInterval(
+              onAutoScroll,
+              50,
+            )
+          }
+        })}
+        onPointerLeave={composeEventHandlers(onPointerLeave, () => {
+          clearAutoScrollTimer()
+        })}
+        onPointerMove={composeEventHandlers(onPointerMove, () => {
+          contentContext.onItemLeave?.()
+          if (autoScrollTimerRef.current === null) {
+            autoScrollTimerRef.current = window.setInterval(
+              onAutoScroll,
+              50,
+            )
+          }
+        })}
+        aria-hidden
+        {...props}
+      />
+    )
+  },
+)
+
+type MultiSelectScrollUpButtonElement =
+  MultiSelectScrollButtonImplElement
 
 interface MultiSelectScrollUpButtonProps
   extends Omit<MultiSelectScrollButtonImplProps, 'onAutoScroll'> {}
 
-const MultiSelectScrollUpButton = ({
-  __scopeMultiSelect,
-  ref,
-  ...props
-}: ScopedProps<MultiSelectScrollUpButtonProps>): React.JSX.Element | null => {
+const MultiSelectScrollUpButton = forwardRef<
+  MultiSelectScrollUpButtonElement,
+  ScopedProps<MultiSelectScrollUpButtonProps>
+>(({ __scopeMultiSelect, ...props }, forwardedRef) => {
   const contentContext = useMultiSelectContentContext(
     SCROLL_UP_BUTTON_NAME,
     __scopeMultiSelect,
@@ -1749,7 +1870,7 @@ const MultiSelectScrollUpButton = ({
   )
   const [canScrollUp, setCanScrollUp] = useState(false)
   const composedRefs = useComposedRefs(
-    ref,
+    forwardedRef,
     viewportContext.onScrollButtonChange,
   )
 
@@ -1780,7 +1901,7 @@ const MultiSelectScrollUpButton = ({
       }}
     />
   ) : null
-}
+})
 
 MultiSelectScrollUpButton.displayName = SCROLL_UP_BUTTON_NAME
 
@@ -1788,14 +1909,15 @@ MultiSelectScrollUpButton.displayName = SCROLL_UP_BUTTON_NAME
  * SelectScrollDownButton
  * -----------------------------------------------------------------------------------------------*/
 
+type MultiSelectScrollDownButtonElement =
+  MultiSelectScrollButtonImplElement
 interface MultiSelectScrollDownButtonProps
   extends Omit<MultiSelectScrollButtonImplProps, 'onAutoScroll'> {}
 
-const MultiSelectScrollDownButton = ({
-  __scopeMultiSelect,
-  ref,
-  ...props
-}: ScopedProps<MultiSelectScrollDownButtonProps>): React.JSX.Element | null => {
+const MultiSelectScrollDownButton = forwardRef<
+  MultiSelectScrollDownButtonElement,
+  ScopedProps<MultiSelectScrollDownButtonProps>
+>(({ __scopeMultiSelect, ...props }, forwardedRef) => {
   const contentContext = useMultiSelectContentContext(
     SCROLL_DOWN_BUTTON_NAME,
     __scopeMultiSelect,
@@ -1806,7 +1928,7 @@ const MultiSelectScrollDownButton = ({
   )
   const [canScrollDown, setCanScrollDown] = useState(false)
   const composedRefs = useComposedRefs(
-    ref,
+    forwardedRef,
     viewportContext.onScrollButtonChange,
   )
 
@@ -1842,7 +1964,7 @@ const MultiSelectScrollDownButton = ({
       {...props}
     />
   ) : null
-}
+})
 
 MultiSelectScrollDownButton.displayName = SCROLL_DOWN_BUTTON_NAME
 
@@ -1850,12 +1972,18 @@ MultiSelectScrollDownButton.displayName = SCROLL_DOWN_BUTTON_NAME
  * SelectSeparator
  * -----------------------------------------------------------------------------------------------*/
 
+type MultiSelectSeparatorElement = React.ComponentRef<
+  typeof Primitive.div
+>
 interface MultiSelectSeparatorProps
-  extends React.ComponentProps<typeof Primitive.div> {}
+  extends React.ComponentPropsWithoutRef<typeof Primitive.div> {}
 
-const MultiSelectSeparator = (
-  props: MultiSelectSeparatorProps,
-): React.JSX.Element => <Primitive.div aria-hidden {...props} />
+const MultiSelectSeparator = forwardRef<
+  MultiSelectSeparatorElement,
+  MultiSelectSeparatorProps
+>((props, forwardedRef) => (
+  <Primitive.div ref={forwardedRef} aria-hidden {...props} />
+))
 
 MultiSelectSeparator.displayName = SEPARATOR_NAME
 
@@ -1863,13 +1991,19 @@ MultiSelectSeparator.displayName = SEPARATOR_NAME
  * SelectArrow
  * -----------------------------------------------------------------------------------------------*/
 
-interface MultiSelectArrowProps
-  extends React.ComponentProps<typeof PopperPrimitive.Arrow> {}
+type MultiSelectArrowElement = React.ComponentRef<
+  typeof PopperPrimitive.Arrow
+>
 
-const MultiSelectArrow = ({
-  __scopeMultiSelect,
-  ...props
-}: ScopedProps<MultiSelectArrowProps>): React.JSX.Element | null => {
+interface MultiSelectArrowProps
+  extends React.ComponentPropsWithoutRef<
+    typeof PopperPrimitive.Arrow
+  > {}
+
+const MultiSelectArrow = forwardRef<
+  MultiSelectArrowElement,
+  ScopedProps<MultiSelectArrowProps>
+>(({ __scopeMultiSelect, ...props }, forwardedRef) => {
   const popperScope = usePopperScope(__scopeMultiSelect)
   const context = useMultiSelectContext(
     ARROW_NAME,
@@ -1880,9 +2014,13 @@ const MultiSelectArrow = ({
     __scopeMultiSelect,
   )
   return context.open && contentContext.position === 'popper' ? (
-    <PopperPrimitive.Arrow {...popperScope} {...props} />
+    <PopperPrimitive.Arrow
+      {...popperScope}
+      {...props}
+      ref={forwardedRef}
+    />
   ) : null
-}
+})
 
 MultiSelectArrow.displayName = ARROW_NAME
 
@@ -1890,95 +2028,111 @@ MultiSelectArrow.displayName = ARROW_NAME
  * MultiSelectItemValuePortal
  * -----------------------------------------------------------------------------------------------*/
 
-const ITEM_VALUE_PORTAL_NAME = 'MultiSelectItemValuePortal'
+type MultiSelectItemValuePortalElement = React.ComponentRef<
+  typeof Primitive.div
+>
+interface MultiSelectItemValueContentProps
+  extends React.ComponentPropsWithoutRef<typeof Primitive.div> {}
 
-interface MultiSelectItemSelectedContentProps
-  extends React.ComponentProps<typeof Primitive.div> {}
+const MultiSelectItemValuePortal = forwardRef<
+  MultiSelectItemValuePortalElement,
+  ScopedProps<MultiSelectItemValueContentProps>
+>(
+  (
+    {
+      __scopeMultiSelect,
+      style,
+      onPointerMove,
+      onPointerUp,
+      ...props
+    },
+    forwardedRef,
+  ) => {
+    const context = useMultiSelectContext(
+      ITEM_VALUE_PORTAL_NAME,
+      __scopeMultiSelect,
+    )
+    const itemContext = useMultiSelectItemContext(
+      ITEM_VALUE_PORTAL_NAME,
+      __scopeMultiSelect,
+    )
 
-const MultiSelectItemValuePortal = ({
-  __scopeMultiSelect,
-  style,
-  onPointerMove,
-  onPointerUp,
-  ...props
-}: ScopedProps<MultiSelectItemSelectedContentProps>): React.JSX.Element | null => {
-  const context = useMultiSelectContext(
-    ITEM_VALUE_PORTAL_NAME,
-    __scopeMultiSelect,
-  )
-  const itemContext = useMultiSelectItemContext(
-    ITEM_VALUE_PORTAL_NAME,
-    __scopeMultiSelect,
-  )
-
-  return itemContext.isSelected &&
-    context.valueNode &&
-    !context.valueNodeHasChildren
-    ? ReactDOM.createPortal(
-        <Primitive.div
-          style={{
-            order: context.valueMap[itemContext.value],
-            pointerEvents: context.open ? 'auto' : undefined,
-            ...style,
-          }}
-          aria-disabled={itemContext.disabled || undefined}
-          data-disabled={itemContext.disabled ? '' : undefined}
-          onPointerMove={composeEventHandlers(onPointerMove, () => {
-            itemContext.rootRef.current?.focus({
-              preventScroll: true,
-            })
-          })}
-          {...props}
-        />,
-        context.valueNode,
-      )
-    : null
-}
+    return itemContext.isSelected &&
+      context.valueNode &&
+      !context.valueNodeHasChildren
+      ? ReactDOM.createPortal(
+          <Primitive.div
+            ref={forwardedRef}
+            style={{
+              order: context.valueMap[itemContext.value],
+              pointerEvents: context.open ? 'auto' : undefined,
+              ...style,
+            }}
+            aria-disabled={itemContext.disabled || undefined}
+            data-disabled={itemContext.disabled ? '' : undefined}
+            onPointerMove={composeEventHandlers(onPointerMove, () => {
+              itemContext.rootRef.current?.focus({
+                preventScroll: true,
+              })
+            })}
+            {...props}
+          />,
+          context.valueNode,
+        )
+      : null
+  },
+)
 
 /* -------------------------------------------------------------------------------------------------
  * MultiSelectDeselectButton
  * -----------------------------------------------------------------------------------------------*/
 
-const DESELECT_BUTTON_NAME = 'MultiSelectDeselectButton'
+type MultiSelectDeselectButtonElement = React.ComponentRef<
+  typeof Primitive.button
+>
 
 interface MultiSelectDeselectButtonProps
-  extends React.ComponentProps<typeof Primitive.button> {}
+  extends React.ComponentPropsWithoutRef<typeof Primitive.button> {}
 
-const MultiSelectDeselectButton = ({
-  __scopeMultiSelect,
-  onClick,
-  disabled,
-  ...props
-}: ScopedProps<MultiSelectDeselectButtonProps>): React.JSX.Element | null => {
-  const context = useMultiSelectContext(
-    DESELECT_BUTTON_NAME,
-    __scopeMultiSelect,
-  )
-  const itemContext = useMultiSelectItemContext(
-    DESELECT_BUTTON_NAME,
-    __scopeMultiSelect,
-  )
-  const isDisabled =
-    itemContext.disabled || disabled || context.disabled
-
-  const onClickDeselect: MouseEventHandler<HTMLButtonElement> = (
-    event,
+const MultiSelectDeselectButton = forwardRef<
+  MultiSelectDeselectButtonElement,
+  ScopedProps<MultiSelectDeselectButtonProps>
+>(
+  (
+    { __scopeMultiSelect, onClick, disabled, ...props },
+    forwardedRef,
   ) => {
-    event.stopPropagation()
-    context.onValueChange((curr) =>
-      curr.filter((value) => value !== itemContext.value),
+    const context = useMultiSelectContext(
+      DESELECT_BUTTON_NAME,
+      __scopeMultiSelect,
     )
-  }
+    const itemContext = useMultiSelectItemContext(
+      DESELECT_BUTTON_NAME,
+      __scopeMultiSelect,
+    )
+    const isDisabled =
+      itemContext.disabled || disabled || context.disabled
 
-  return (
-    <Primitive.button
-      disabled={isDisabled}
-      style={{ pointerEvents: isDisabled ? 'none' : 'auto' }}
-      onClick={composeEventHandlers(onClick, onClickDeselect)}
-      {...props}
-    />
-  )
-}
+    const onClickDeselect: MouseEventHandler<HTMLButtonElement> = (
+      event,
+    ) => {
+      event.stopPropagation()
+      context.onValueChange((curr) =>
+        curr.filter((value) => value !== itemContext.value),
+      )
+    }
+
+    return (
+      <Primitive.button
+        ref={forwardedRef}
+        disabled={isDisabled}
+        style={{ pointerEvents: isDisabled ? 'none' : 'auto' }}
+        onClick={composeEventHandlers(onClick, onClickDeselect)}
+        {...props}
+      />
+    )
+  },
+)
 
 /* -----------------------------------------------------------------------------------------------*/
 
@@ -2047,18 +2201,32 @@ export {
 export type {
   MultiSelectArrowProps,
   MultiSelectContentProps,
+  MultiSelectDeselectButtonElement,
+  MultiSelectDeselectButtonProps,
+  MultiSelectGroupElement,
   MultiSelectGroupProps,
+  MultiSelectIconElement,
   MultiSelectIconProps,
+  MultiSelectItemElement,
+  MultiSelectItemIndicatorElement,
   MultiSelectItemIndicatorProps,
   MultiSelectItemProps,
+  MultiSelectItemTextElement,
   MultiSelectItemTextProps,
+  MultiSelectItemValueContentProps,
+  MultiSelectItemValuePortalElement,
+  MultiSelectLabelElement,
   MultiSelectLabelProps,
+  MultiSelectPortalElement,
   MultiSelectPortalProps,
   MultiSelectProps,
+  MultiSelectScrollButtonImplElement,
   MultiSelectScrollDownButtonProps,
+  MultiSelectScrollUpButtonElement,
   MultiSelectScrollUpButtonProps,
   MultiSelectSeparatorProps,
   MultiSelectTriggerProps,
+  MultiSelectValueElement,
   MultiSelectValueProps,
   MultiSelectViewportProps,
 }

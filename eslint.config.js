@@ -5,4 +5,8 @@ export default eslint({
   react: true,
   typescript: true,
   jsxA11y: true,
+}).append({
+  rules: {
+    'react/no-forward-ref': 'off',
+  },
 })

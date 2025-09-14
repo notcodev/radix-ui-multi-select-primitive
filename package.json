@@ -1,7 +1,7 @@
 {
   "name": "radix-ui-multiselect-primitive",
   "type": "module",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "packageManager": "pnpm@10.14.0",
   "description": "Multiselect primitive for Radix UI",
   "author": {
@@ -77,7 +77,7 @@
     "react-remove-scroll": "^2.7.1"
   },
   "devDependencies": {
-    "@eslint/config-inspector": "latest",
+    "@eslint/config-inspector": "^1.2.0",
     "@notcodev/eslint": "^1.4.2",
     "@notcodev/prettier": "^1.2.0",
     "@types/react": "^19",
@@ -90,7 +90,8 @@
     "rimraf": "^6.0.1",
     "tsup": "^8.5.0",
     "typescript": "^5.9.2",
-    "vite": "^7.1.2"
+    "vite": "^7.1.2",
+    "vitepress": "^1.6.4"
   },
   "lint-staged": {
     "*.{js,ts,jsx,tsx,cjs,mjs,cts,mts,md,yml,json}": [
