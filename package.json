@@ -27,7 +27,7 @@
     "dist/**/*"
   ],
   "scripts": {
-    "build": "tsup",
+    "build": "tsdown",
     "typecheck": "tsc -b",
     "clean": "rimraf dist",
     "format:write": "prettier --write \"**/*.{ts,tsx,mdx}\" --cache",
@@ -91,7 +91,7 @@
     "lint-staged": "^16.1.6",
     "prettier": "^3.6.2",
     "rimraf": "^6.0.1",
-    "tsup": "^8.5.0",
+    "tsdown": "^0.15.9",
     "typescript": "^5.9.2",
     "vite": "^7.1.2",
     "vitepress": "^1.6.4"
